@@ -1,28 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, RotateCcw, Sparkles } from 'lucide-react';
+import { LogOut, Send, Settings, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from '@/components/ChatMessage';
 import { CreditsBanner } from '@/components/CreditsBanner';
+import { useAuth } from '@/hooks/useAuth';
+import { useProfileRole } from '@/hooks/useProfileRole';
+import { Link } from 'react-router-dom';
 import { 
   getCredits, 
   setCredits, 
   getChatHistory, 
   setChatHistory, 
-  resetAll, 
   generateId,
   ChatMessage as ChatMessageType 
 } from '@/lib/storage';
 
 const Index = () => {
+  const { user, signOut } = useAuth();
+  const { role } = useProfileRole();
   const [credits, setCreditsState] = useState(10);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const requestAssistantReply = async (currentMessages: ChatMessageType[]) => {
-    const response = await fetch('/api/chat', {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    const endpoint = apiBaseUrl ? `${apiBaseUrl}/api/chat` : '/api/chat';
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -34,7 +39,7 @@ const Index = () => {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data?.error || 'Erro ao buscar resposta');
+      throw new Error(data?.error || `Erro ao buscar resposta (${response.status})`);
     }
     if (!data?.reply) {
       throw new Error('Resposta vazia');
@@ -87,10 +92,12 @@ const Index = () => {
         return nextCredits;
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      console.error('Chat request failed', error);
       const assistantMessage: ChatMessageType = {
         id: generateId(),
         role: 'assistant',
-        content: 'Não foi possível obter resposta agora. Tente novamente.',
+        content: `Não foi possível obter resposta agora. ${errorMessage}`,
         timestamp: Date.now(),
       };
       const updatedMessages = [...newMessages, assistantMessage];
@@ -99,14 +106,6 @@ const Index = () => {
     } finally {
       setIsTyping(false);
     }
-  };
-
-  const handleReset = () => {
-    resetAll();
-    setCreditsState(10);
-    setMessages([]);
-    setInputValue('');
-    inputRef.current?.focus();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -127,6 +126,17 @@ const Index = () => {
           <h1 className="text-xl font-bold text-foreground">Mentorix</h1>
         </div>
         <div className="flex items-center gap-3">
+          {user?.email && (
+            <span className="hidden sm:inline text-sm text-muted-foreground">{user.email}</span>
+          )}
+          {role === 'admin' && (
+            <Button variant="ghost" size="sm" asChild className="gap-1.5">
+              <Link to="/admin">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Admin</span>
+              </Link>
+            </Button>
+          )}
           <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${
             hasNoCredits 
               ? 'bg-destructive/15 text-destructive' 
@@ -135,13 +145,13 @@ const Index = () => {
             Créditos: {credits}
           </div>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            onClick={handleReset}
+            onClick={signOut}
             className="gap-1.5"
           >
-            <RotateCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Reset</span>
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sair</span>
           </Button>
         </div>
       </header>
@@ -162,7 +172,7 @@ const Index = () => {
             </p>
           </div>
         ) : (
-          <>
+          <div className="max-w-4xl mx-auto">
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} />
             ))}
@@ -177,7 +187,7 @@ const Index = () => {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -189,7 +199,6 @@ const Index = () => {
       <div className="p-4 bg-card border-t border-border">
         <div className="flex gap-2 max-w-4xl mx-auto">
           <input
-            ref={inputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}

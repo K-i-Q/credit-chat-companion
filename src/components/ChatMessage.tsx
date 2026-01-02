@@ -1,4 +1,6 @@
 import { ChatMessage as ChatMessageType } from '@/lib/storage';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -16,21 +18,27 @@ export const ChatMessage = ({ message }: ChatMessageProps) => {
             : 'bg-muted text-foreground rounded-bl-md'
         }`}
       >
-        <div className="whitespace-pre-wrap text-sm md:text-base leading-relaxed">
-          {message.content.split('\n').map((line, i) => {
-            if (line.startsWith('**') && line.includes(':**')) {
-              const parts = line.split(':**');
-              const label = parts[0].replace(/\*\*/g, '');
-              const rest = parts.slice(1).join(':**');
-              return (
-                <p key={i} className="mb-2">
-                  <span className="font-semibold text-accent-foreground">{label}:</span>
-                  {rest}
-                </p>
-              );
-            }
-            return <p key={i} className={line ? 'mb-1' : 'mb-2'}>{line}</p>;
-          })}
+        <div className="text-sm md:text-base leading-relaxed">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+              ul: ({ children }) => <ul className="list-disc pl-5 mb-2 last:mb-0">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 last:mb-0">{children}</ol>,
+              li: ({ children }) => <li className="mb-1 last:mb-0">{children}</li>,
+              a: ({ href, children }) => (
+                <a href={href} className="underline" rel="noreferrer" target="_blank">
+                  {children}
+                </a>
+              ),
+              code: ({ children }) => (
+                <code className="rounded bg-muted px-1 py-0.5 text-[0.9em]">{children}</code>
+              ),
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
         <span className={`text-xs mt-2 block ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
           {new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}

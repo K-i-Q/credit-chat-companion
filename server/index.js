@@ -1,6 +1,7 @@
 import fs from "fs";
 import http from "http";
 import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
 const envPath = path.resolve(process.cwd(), ".env");
 if (fs.existsSync(envPath)) {
@@ -23,6 +24,13 @@ const PORT = Number(process.env.PORT || 3001);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabaseAdmin =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
 
 const sendJson = (res, status, payload) => {
   res.writeHead(status, {
@@ -58,6 +66,43 @@ const readJsonBody = (req) =>
     req.on("error", reject);
   });
 
+const getBearerToken = (req) => {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) return null;
+  return authHeader.slice(7);
+};
+
+const requireAdmin = async (req, res) => {
+  if (!supabaseAdmin) {
+    sendJson(res, 500, { error: "Supabase admin client not configured" });
+    return null;
+  }
+  const token = getBearerToken(req);
+  if (!token) {
+    sendJson(res, 401, { error: "Missing auth token" });
+    return null;
+  }
+  const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
+  if (userError || !userData?.user) {
+    sendJson(res, 401, { error: "Invalid auth token" });
+    return null;
+  }
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+  if (profileError) {
+    sendJson(res, 500, { error: "Failed to read profile role" });
+    return null;
+  }
+  if (profile?.role !== "admin") {
+    sendJson(res, 403, { error: "Forbidden" });
+    return null;
+  }
+  return { user: userData.user };
+};
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
@@ -72,6 +117,75 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/health") {
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/api/admin/users") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+    if (error) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+    const users = data?.users || [];
+    const userIds = users.map((user) => user.id);
+    const { data: profiles } = await supabaseAdmin
+      .from("profiles")
+      .select("user_id, role, full_name")
+      .in("user_id", userIds);
+
+    const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
+    const payload = users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      created_at: user.created_at,
+      last_sign_in_at: user.last_sign_in_at,
+      role: profileMap.get(user.id)?.role || "user",
+      full_name: profileMap.get(user.id)?.full_name || null,
+    }));
+
+    sendJson(res, 200, { users: payload });
+    return;
+  }
+
+  if (url.pathname === "/api/admin/role") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+      return;
+    }
+
+    const { user_id: userId, role } = payload || {};
+    if (!userId || (role !== "admin" && role !== "user")) {
+      sendJson(res, 400, { error: "Invalid user_id or role" });
+      return;
+    }
+
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .upsert({ user_id: userId, role }, { onConflict: "user_id" });
+
+    if (error) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+
     sendJson(res, 200, { ok: true });
     return;
   }
@@ -108,7 +222,6 @@ const server = http.createServer(async (req, res) => {
   const requestBody = {
     model: payload.model || OPENAI_MODEL,
     messages,
-    temperature: typeof payload.temperature === "number" ? payload.temperature : 0.7,
   };
 
   try {
