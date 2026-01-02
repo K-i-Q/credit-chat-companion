@@ -12,7 +12,6 @@ import {
   generateId,
   ChatMessage as ChatMessageType 
 } from '@/lib/storage';
-import { generateMockAnswer } from '@/lib/mockAnswer';
 
 const Index = () => {
   const [credits, setCreditsState] = useState(10);
@@ -21,6 +20,27 @@ const Index = () => {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const requestAssistantReply = async (currentMessages: ChatMessageType[]) => {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: currentMessages.map(({ role, content }) => ({ role, content })),
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.error || 'Erro ao buscar resposta');
+    }
+    if (!data?.reply) {
+      throw new Error('Resposta vazia');
+    }
+    return data.reply as string;
+  };
 
   useEffect(() => {
     setCreditsState(getCredits());
@@ -47,12 +67,13 @@ const Index = () => {
     setInputValue('');
     setIsTyping(true);
 
-    // Simular delay de resposta
-    setTimeout(() => {
+    try {
+      const reply = await requestAssistantReply(newMessages);
+
       const assistantMessage: ChatMessageType = {
         id: generateId(),
         role: 'assistant',
-        content: generateMockAnswer(userMessage.content),
+        content: reply,
         timestamp: Date.now(),
       };
 
@@ -60,11 +81,24 @@ const Index = () => {
       setMessages(updatedMessages);
       setChatHistory(updatedMessages);
 
-      const newCredits = credits - 1;
-      setCreditsState(newCredits);
-      setCredits(newCredits);
+      setCreditsState((prevCredits) => {
+        const nextCredits = Math.max(prevCredits - 1, 0);
+        setCredits(nextCredits);
+        return nextCredits;
+      });
+    } catch (error) {
+      const assistantMessage: ChatMessageType = {
+        id: generateId(),
+        role: 'assistant',
+        content: 'Não foi possível obter resposta agora. Tente novamente.',
+        timestamp: Date.now(),
+      };
+      const updatedMessages = [...newMessages, assistantMessage];
+      setMessages(updatedMessages);
+      setChatHistory(updatedMessages);
+    } finally {
       setIsTyping(false);
-    }, 800 + Math.random() * 700);
+    }
   };
 
   const handleReset = () => {
