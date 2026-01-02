@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfileRole } from "@/hooks/useProfileRole";
+import { supabase } from "@/lib/supabaseClient";
+import { getFunctionsErrorMessage } from "@/lib/functions";
 
 interface AdminUser {
   id: string;
@@ -42,9 +44,6 @@ const Admin = () => {
 
   const isAdmin = role === "admin";
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
-  const buildUrl = (path: string) => (apiBaseUrl ? `${apiBaseUrl}${path}` : path);
-
   const authHeader = useMemo(() => {
     if (!session?.access_token) return {};
     return { Authorization: `Bearer ${session.access_token}` };
@@ -54,34 +53,35 @@ const Admin = () => {
     if (!session?.access_token) return;
     setLoading(true);
     setForbidden(false);
-    const response = await fetch(buildUrl("/api/admin/users"), {
+    const { data, error } = await supabase.functions.invoke("admin-users", {
       headers: authHeader,
     });
-    if (response.status === 403) {
-      setForbidden(true);
-      setLoading(false);
-      return;
-    }
-    const data = await response.json().catch(() => ({}));
     setLoading(false);
-    if (!response.ok) {
-      toast.error(data?.error || "Falha ao carregar usuários.");
+    if (error) {
+      const status = (error as { context?: Response }).context?.status;
+      if (status === 403) {
+        setForbidden(true);
+        return;
+      }
+      const message = await getFunctionsErrorMessage(error, "Falha ao carregar usuários.");
+      toast.error(message);
       return;
     }
-    setUsers(data.users || []);
+    setUsers(data?.users || []);
   };
 
   const fetchInvites = async () => {
     if (!session?.access_token) return;
-    const response = await fetch(buildUrl("/api/admin/invites"), {
+    const { data, error } = await supabase.functions.invoke("admin-invites", {
       headers: authHeader,
+      method: "GET",
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      toast.error(data?.error || "Falha ao carregar convites.");
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, "Falha ao carregar convites.");
+      toast.error(message);
       return;
     }
-    setInvites(data.invites || []);
+    setInvites(data?.invites || []);
   };
 
   useEffect(() => {
@@ -94,18 +94,14 @@ const Admin = () => {
   const updateRole = async (userId: string, nextRole: "admin" | "user") => {
     if (!session?.access_token) return;
     setUpdatingId(userId);
-    const response = await fetch(buildUrl("/api/admin/role"), {
-      method: "POST",
-      headers: {
-        ...authHeader,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user_id: userId, role: nextRole }),
+    const { error } = await supabase.functions.invoke("admin-role", {
+      headers: authHeader,
+      body: { user_id: userId, role: nextRole },
     });
-    const data = await response.json().catch(() => ({}));
     setUpdatingId(null);
-    if (!response.ok) {
-      toast.error(data?.error || "Erro ao atualizar role.");
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, "Erro ao atualizar role.");
+      toast.error(message);
       return;
     }
     setUsers((prev) =>
@@ -120,18 +116,14 @@ const Admin = () => {
       return;
     }
     setUpdatingId(userId);
-    const response = await fetch(buildUrl("/api/admin/users/delete"), {
-      method: "POST",
-      headers: {
-        ...authHeader,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user_id: userId }),
+    const { error } = await supabase.functions.invoke("admin-users-delete", {
+      headers: authHeader,
+      body: { user_id: userId },
     });
-    const data = await response.json().catch(() => ({}));
     setUpdatingId(null);
-    if (!response.ok) {
-      toast.error(data?.error || "Erro ao excluir usuário.");
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, "Erro ao excluir usuário.");
+      toast.error(message);
       return;
     }
     setUsers((prev) => prev.filter((item) => item.id !== userId));
@@ -147,18 +139,14 @@ const Admin = () => {
       return;
     }
     setUpdatingId(userId);
-    const response = await fetch(buildUrl("/api/admin/credits"), {
-      method: "POST",
-      headers: {
-        ...authHeader,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user_id: userId, amount }),
+    const { data, error } = await supabase.functions.invoke("admin-credits", {
+      headers: authHeader,
+      body: { user_id: userId, amount },
     });
-    const data = await response.json().catch(() => ({}));
     setUpdatingId(null);
-    if (!response.ok) {
-      toast.error(data?.error || "Erro ao adicionar créditos.");
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, "Erro ao adicionar créditos.");
+      toast.error(message);
       return;
     }
     setUsers((prev) =>
@@ -185,18 +173,14 @@ const Admin = () => {
       return;
     }
     setInviteLoading(true);
-    const response = await fetch(buildUrl("/api/admin/invites"), {
-      method: "POST",
-      headers: {
-        ...authHeader,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ credits, code }),
+    const { data, error } = await supabase.functions.invoke("admin-invites", {
+      headers: authHeader,
+      body: { credits, code },
     });
-    const data = await response.json().catch(() => ({}));
     setInviteLoading(false);
-    if (!response.ok) {
-      toast.error(data?.error || "Erro ao criar convite.");
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, "Erro ao criar convite.");
+      toast.error(message);
       return;
     }
     if (data?.invite) {
@@ -220,18 +204,14 @@ const Admin = () => {
       return;
     }
     setInviteDeletingId(inviteId);
-    const response = await fetch(buildUrl("/api/admin/invites/delete"), {
-      method: "POST",
-      headers: {
-        ...authHeader,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ invite_id: inviteId }),
+    const { error } = await supabase.functions.invoke("admin-invites-delete", {
+      headers: authHeader,
+      body: { invite_id: inviteId },
     });
-    const data = await response.json().catch(() => ({}));
     setInviteDeletingId(null);
-    if (!response.ok) {
-      toast.error(data?.error || "Erro ao excluir cupom.");
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, "Erro ao excluir cupom.");
+      toast.error(message);
       return;
     }
     setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
@@ -287,25 +267,25 @@ const Admin = () => {
                 <div className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
                     <div>
-                    <label className="text-sm text-muted-foreground">Créditos do cupom</label>
-                    <input
-                      type="number"
-                      min={1}
-                      className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      value={inviteCredits}
-                      onChange={(event) => setInviteCredits(event.target.value)}
-                      placeholder="Ex: 10"
-                    />
+                      <label className="text-sm text-muted-foreground">Créditos do cupom</label>
+                      <input
+                        type="number"
+                        min={1}
+                        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={inviteCredits}
+                        onChange={(event) => setInviteCredits(event.target.value)}
+                        placeholder="Ex: 10"
+                      />
                     </div>
                     <div>
-                    <label className="text-sm text-muted-foreground">Código do cupom</label>
-                    <input
-                      type="text"
-                      className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      value={inviteCode}
-                      onChange={(event) => setInviteCode(event.target.value)}
-                      placeholder="Ex: mentorix10"
-                    />
+                      <label className="text-sm text-muted-foreground">Código do cupom</label>
+                      <input
+                        type="text"
+                        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={inviteCode}
+                        onChange={(event) => setInviteCode(event.target.value)}
+                        placeholder="Ex: mentorix10"
+                      />
                     </div>
                     <Button onClick={createInvite} disabled={inviteLoading} className="w-full sm:w-auto">
                       {inviteLoading ? "Criando..." : "Criar cupom"}

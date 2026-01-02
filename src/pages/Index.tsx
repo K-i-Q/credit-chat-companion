@@ -23,6 +23,7 @@ import {
 } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
+import { getFunctionsErrorMessage } from '@/lib/functions';
 
 const Index = () => {
   const { user, signOut } = useAuth();
@@ -38,21 +39,15 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const requestAssistantReply = async (currentMessages: ChatMessageType[]) => {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-    const endpoint = apiBaseUrl ? `${apiBaseUrl}/api/chat` : '/api/chat';
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const { data, error } = await supabase.functions.invoke('chat', {
+      body: {
         messages: currentMessages.map(({ role, content }) => ({ role, content })),
-      }),
+      },
     });
 
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data?.error || `Erro ao buscar resposta (${response.status})`);
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, 'Erro ao buscar resposta.');
+      throw new Error(message);
     }
     if (!data?.reply) {
       throw new Error('Resposta vazia');
@@ -68,29 +63,21 @@ const Index = () => {
     }
     setRedeemLoading(true);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        toast.error('Sua sessão expirou. Faça login novamente.');
+      if (!user) {
+        toast.error('Faça login para resgatar um cupom.');
         return;
       }
 
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-      const endpoint = apiBaseUrl ? `${apiBaseUrl}/api/invite/redeem` : '/api/invite/redeem';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code }),
+      const { data, error } = await supabase.functions.invoke('invite-redeem', {
+        body: { code },
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status === 404) {
+
+      if (error) {
+        const message = await getFunctionsErrorMessage(error, 'Erro ao resgatar cupom.');
+        if (message.toLowerCase().includes('invite not found')) {
           toast.error('Cupom inválido ou expirado.');
         } else {
-          toast.error(data?.error || 'Erro ao resgatar cupom.');
+          toast.error(message);
         }
         return;
       }
