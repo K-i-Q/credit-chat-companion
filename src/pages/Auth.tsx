@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 const Auth = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -23,6 +24,13 @@ const Auth = () => {
       navigate("/");
     }
   }, [user, navigate]);
+
+  useEffect(() => {
+    const invite = searchParams.get("invite");
+    if (invite) {
+      localStorage.setItem("mentorix_invite_code", invite);
+    }
+  }, [searchParams]);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import http from "http";
 import path from "path";
@@ -140,8 +141,13 @@ const server = http.createServer(async (req, res) => {
       .from("profiles")
       .select("user_id, role, full_name")
       .in("user_id", userIds);
+    const { data: wallets } = await supabaseAdmin
+      .from("credit_wallets")
+      .select("user_id, balance")
+      .in("user_id", userIds);
 
     const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
+    const walletMap = new Map((wallets || []).map((w) => [w.user_id, w]));
     const payload = users.map((user) => ({
       id: user.id,
       email: user.email,
@@ -149,6 +155,7 @@ const server = http.createServer(async (req, res) => {
       last_sign_in_at: user.last_sign_in_at,
       role: profileMap.get(user.id)?.role || "user",
       full_name: profileMap.get(user.id)?.full_name || null,
+      balance: walletMap.get(user.id)?.balance ?? 0,
     }));
 
     sendJson(res, 200, { users: payload });
@@ -187,6 +194,268 @@ const server = http.createServer(async (req, res) => {
     }
 
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/api/admin/credits") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+      return;
+    }
+
+    const amount = Number(payload?.amount);
+    const userId = payload?.user_id;
+    if (!userId || !Number.isInteger(amount) || amount <= 0) {
+      sendJson(res, 400, { error: "Invalid user_id or amount" });
+      return;
+    }
+
+    if (!supabaseAdmin) {
+      sendJson(res, 500, { error: "Supabase admin client not configured" });
+      return;
+    }
+
+    const { data: walletRow, error: walletError } = await supabaseAdmin
+      .from("credit_wallets")
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (walletError) {
+      sendJson(res, 500, { error: "Failed to read wallet" });
+      return;
+    }
+
+    if (!walletRow) {
+      const { error: insertError } = await supabaseAdmin
+        .from("credit_wallets")
+        .insert({ user_id: userId, balance: 0 });
+      if (insertError) {
+        sendJson(res, 500, { error: "Failed to create wallet" });
+        return;
+      }
+    }
+
+    const { data, error } = await supabaseAdmin.rpc("admin_topup_credits", {
+      p_user_id: userId,
+      p_amount: amount,
+      p_meta: {
+        source: "admin",
+        by: auth.user.id,
+      },
+    });
+
+    if (error) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+
+    const newBalance = Array.isArray(data) ? data[0]?.new_balance : data?.new_balance;
+    sendJson(res, 200, { ok: true, new_balance: newBalance ?? null });
+    return;
+  }
+
+  if (url.pathname === "/api/admin/users/delete") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+      return;
+    }
+
+    const userId = payload?.user_id;
+    if (!userId) {
+      sendJson(res, 400, { error: "Invalid user_id" });
+      return;
+    }
+    if (userId === auth.user.id) {
+      sendJson(res, 400, { error: "Cannot delete your own account" });
+      return;
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/api/admin/invites") {
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    if (req.method === "GET") {
+      const { data, error } = await supabaseAdmin
+        .from("invite_links")
+        .select("id, code, credits, active, uses_count, created_at, last_used_at")
+        .order("created_at", { ascending: false });
+      if (error) {
+        sendJson(res, 500, { error: error.message });
+        return;
+      }
+      sendJson(res, 200, { invites: data || [] });
+      return;
+    }
+
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+      return;
+    }
+
+    const credits = Number(payload?.credits);
+    if (!Number.isInteger(credits) || credits <= 0) {
+      sendJson(res, 400, { error: "Invalid credits" });
+      return;
+    }
+
+    const code = `mrx_${crypto.randomBytes(5).toString("hex")}`;
+    const { data, error } = await supabaseAdmin
+      .from("invite_links")
+      .insert({ code, credits, created_by: auth.user.id })
+      .select("id, code, credits, active, uses_count, created_at, last_used_at")
+      .single();
+
+    if (error) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+
+    sendJson(res, 200, { invite: data });
+    return;
+  }
+
+  if (url.pathname === "/api/invite/redeem") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!supabaseAdmin) {
+      sendJson(res, 500, { error: "Supabase admin client not configured" });
+      return;
+    }
+    const token = getBearerToken(req);
+    if (!token) {
+      sendJson(res, 401, { error: "Missing auth token" });
+      return;
+    }
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+      return;
+    }
+
+    const code = typeof payload?.code === "string" ? payload.code.trim() : "";
+    if (!code) {
+      sendJson(res, 400, { error: "Invalid code" });
+      return;
+    }
+
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !userData?.user) {
+      sendJson(res, 401, { error: "Invalid auth token" });
+      return;
+    }
+
+    const { data: invite, error: inviteError } = await supabaseAdmin
+      .from("invite_links")
+      .select("id, credits, active, uses_count")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (inviteError || !invite || !invite.active) {
+      sendJson(res, 404, { error: "Invite not found" });
+      return;
+    }
+
+    const { error: redemptionError } = await supabaseAdmin
+      .from("invite_redemptions")
+      .insert({ invite_id: invite.id, user_id: userData.user.id });
+
+    if (redemptionError?.code === "23505") {
+      sendJson(res, 200, { ok: true, already_redeemed: true });
+      return;
+    }
+
+    if (redemptionError) {
+      sendJson(res, 500, { error: "Failed to redeem invite" });
+      return;
+    }
+
+    const { data: walletRow } = await supabaseAdmin
+      .from("credit_wallets")
+      .select("user_id")
+      .eq("user_id", userData.user.id)
+      .maybeSingle();
+
+    if (!walletRow) {
+      const { error: insertError } = await supabaseAdmin
+        .from("credit_wallets")
+        .insert({ user_id: userData.user.id, balance: 0 });
+      if (insertError) {
+        await supabaseAdmin
+          .from("invite_redemptions")
+          .delete()
+          .eq("invite_id", invite.id)
+          .eq("user_id", userData.user.id);
+        sendJson(res, 500, { error: "Failed to create wallet" });
+        return;
+      }
+    }
+
+    const { data: topupData, error: topupError } = await supabaseAdmin.rpc("admin_topup_credits", {
+      p_user_id: userData.user.id,
+      p_amount: invite.credits,
+      p_meta: { source: "invite", code },
+    });
+
+    if (topupError) {
+      await supabaseAdmin
+        .from("invite_redemptions")
+        .delete()
+        .eq("invite_id", invite.id)
+        .eq("user_id", userData.user.id);
+      sendJson(res, 500, { error: topupError.message });
+      return;
+    }
+
+    await supabaseAdmin
+      .from("invite_links")
+      .update({ uses_count: invite.uses_count + 1, last_used_at: new Date().toISOString() })
+      .eq("id", invite.id);
+
+    const newBalance = Array.isArray(topupData) ? topupData[0]?.new_balance : topupData?.new_balance;
+    sendJson(res, 200, { ok: true, new_balance: newBalance ?? null });
     return;
   }
 

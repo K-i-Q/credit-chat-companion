@@ -7,18 +7,19 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfileRole } from '@/hooks/useProfileRole';
 import { Link } from 'react-router-dom';
 import { 
-  getCredits, 
-  setCredits, 
   getChatHistory, 
   setChatHistory, 
   generateId,
   ChatMessage as ChatMessageType 
 } from '@/lib/storage';
+import { supabase } from '@/lib/supabaseClient';
+import { toast } from 'sonner';
 
 const Index = () => {
   const { user, signOut } = useAuth();
   const { role } = useProfileRole();
-  const [credits, setCreditsState] = useState(10);
+  const [credits, setCreditsState] = useState(0);
+  const [creditsLoading, setCreditsLoading] = useState(true);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -48,8 +49,50 @@ const Index = () => {
   };
 
   useEffect(() => {
-    setCreditsState(getCredits());
     setMessages(getChatHistory());
+  }, []);
+
+  useEffect(() => {
+    const loadCredits = async () => {
+      if (!user) return;
+      setCreditsLoading(true);
+      let { data, error } = await supabase
+        .from('credit_wallets')
+        .select('balance')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (error) {
+        toast.error('Falha ao carregar créditos.');
+      } else if (!data) {
+        await supabase.rpc('ensure_user_bootstrap').catch(() => {});
+        const retry = await supabase
+          .from('credit_wallets')
+          .select('balance')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        data = retry.data ?? null;
+      }
+      setCreditsState(data?.balance ?? 0);
+      setCreditsLoading(false);
+    };
+
+    if (user) {
+      loadCredits();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<number>;
+      if (typeof customEvent.detail === 'number') {
+        setCreditsState(customEvent.detail);
+        setCreditsLoading(false);
+      }
+    };
+    window.addEventListener('mentorix-credits-updated', handler as EventListener);
+    return () => {
+      window.removeEventListener('mentorix-credits-updated', handler as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -57,7 +100,7 @@ const Index = () => {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || credits <= 0 || isTyping) return;
+    if (!inputValue.trim() || credits <= 0 || isTyping || creditsLoading) return;
 
     const userMessage: ChatMessageType = {
       id: generateId(),
@@ -86,11 +129,21 @@ const Index = () => {
       setMessages(updatedMessages);
       setChatHistory(updatedMessages);
 
-      setCreditsState((prevCredits) => {
-        const nextCredits = Math.max(prevCredits - 1, 0);
-        setCredits(nextCredits);
-        return nextCredits;
-      });
+      if (user) {
+        const { data, error } = await supabase.rpc('debit_credits', {
+          p_user_id: user.id,
+          p_amount: 1,
+          p_meta: { source: 'chat' },
+        });
+        if (error) {
+          toast.error(error.message || 'Erro ao debitar créditos.');
+        } else {
+          const newBalance = Array.isArray(data) ? data[0]?.new_balance : data?.new_balance;
+          if (typeof newBalance === 'number') {
+            setCreditsState(newBalance);
+          }
+        }
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('Chat request failed', error);
@@ -115,7 +168,7 @@ const Index = () => {
     }
   };
 
-  const hasNoCredits = credits <= 0;
+  const hasNoCredits = credits <= 0 && !creditsLoading;
 
   return (
     <div className="flex flex-col h-screen max-h-screen bg-background">
@@ -142,7 +195,7 @@ const Index = () => {
               ? 'bg-destructive/15 text-destructive' 
               : 'bg-credits text-credits-foreground'
           }`}>
-            Créditos: {credits}
+            Créditos: {creditsLoading ? '...' : credits}
           </div>
           <Button
             variant="ghost"
@@ -204,12 +257,12 @@ const Index = () => {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder={hasNoCredits ? "Sem créditos disponíveis..." : "Digite sua pergunta..."}
-            disabled={hasNoCredits || isTyping}
+            disabled={hasNoCredits || isTyping || creditsLoading}
             className="flex-1 px-4 py-3 bg-background border border-input rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           />
           <Button
             onClick={handleSendMessage}
-            disabled={!inputValue.trim() || hasNoCredits || isTyping}
+            disabled={!inputValue.trim() || hasNoCredits || isTyping || creditsLoading}
             className="px-4 py-3 h-auto rounded-xl"
           >
             <Send className="h-5 w-5" />
