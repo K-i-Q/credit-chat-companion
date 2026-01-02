@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { LogOut, Send, Settings, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ChatMessage } from '@/components/ChatMessage';
 import { CreditsBanner } from '@/components/CreditsBanner';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,6 +29,9 @@ const Index = () => {
   const { role } = useProfileRole();
   const [credits, setCreditsState] = useState(0);
   const [creditsLoading, setCreditsLoading] = useState(true);
+  const [creditsModalOpen, setCreditsModalOpen] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [redeemLoading, setRedeemLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -46,6 +58,67 @@ const Index = () => {
       throw new Error('Resposta vazia');
     }
     return data.reply as string;
+  };
+
+  const handleRedeemCoupon = async () => {
+    const code = couponCode.trim().toLowerCase();
+    if (!code) {
+      toast.error('Informe um cupom válido.');
+      return;
+    }
+    setRedeemLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        toast.error('Sua sessão expirou. Faça login novamente.');
+        return;
+      }
+
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const endpoint = apiBaseUrl ? `${apiBaseUrl}/api/invite/redeem` : '/api/invite/redeem';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast.error('Cupom inválido ou expirado.');
+        } else {
+          toast.error(data?.error || 'Erro ao resgatar cupom.');
+        }
+        return;
+      }
+
+      if (data?.already_redeemed) {
+        toast.error('Este cupom já foi resgatado.');
+        return;
+      }
+
+      const newBalance = typeof data?.new_balance === 'number' ? data.new_balance : null;
+      if (newBalance !== null) {
+        setCreditsState(newBalance);
+        window.dispatchEvent(
+          new CustomEvent('mentorix-credits-updated', { detail: newBalance })
+        );
+      }
+      setCouponCode('');
+      setCreditsModalOpen(false);
+      toast.success('Cupom resgatado com sucesso.');
+    } catch (error) {
+      toast.error('Erro ao resgatar cupom.');
+    } finally {
+      setRedeemLoading(false);
+    }
+  };
+
+  const handleOpenCredits = () => {
+    setCreditsModalOpen(true);
   };
 
   useEffect(() => {
@@ -190,13 +263,17 @@ const Index = () => {
               </Link>
             </Button>
           )}
-          <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${
-            hasNoCredits 
-              ? 'bg-destructive/15 text-destructive' 
-              : 'bg-credits text-credits-foreground'
-          }`}>
+          <button
+            type="button"
+            onClick={handleOpenCredits}
+            className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+              hasNoCredits
+                ? 'bg-destructive/15 text-destructive'
+                : 'bg-credits text-credits-foreground'
+            }`}
+          >
             Créditos: {creditsLoading ? '...' : credits}
-          </div>
+          </button>
           <Button
             variant="ghost"
             size="sm"
@@ -246,7 +323,52 @@ const Index = () => {
       </div>
 
       {/* Credits Banner */}
-      {hasNoCredits && <CreditsBanner />}
+      {hasNoCredits && <CreditsBanner onOpenCredits={handleOpenCredits} />}
+
+      <Dialog open={creditsModalOpen} onOpenChange={setCreditsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Créditos</DialogTitle>
+            <DialogDescription>
+              Recarregue sua conta ou resgate um cupom.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Resgatar cupom</h3>
+                <p className="text-xs text-muted-foreground">
+                  Insira o código do cupom para receber créditos.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={couponCode}
+                  onChange={(event) => setCouponCode(event.target.value)}
+                  placeholder="Ex: mentorix10"
+                  autoComplete="off"
+                />
+                <Button onClick={handleRedeemCoupon} disabled={redeemLoading}>
+                  {redeemLoading ? 'Resgatando...' : 'Resgatar'}
+                </Button>
+              </div>
+            </div>
+            <div className="border-t border-border pt-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Comprar créditos</h3>
+                <p className="text-xs text-muted-foreground">
+                  Em breve você poderá comprar créditos direto no app.
+                </p>
+              </div>
+              <DialogFooter className="sm:justify-start">
+                <Button type="button" variant="outline" disabled>
+                  Em breve
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Input Area */}
       <div className="p-4 bg-card border-t border-border">

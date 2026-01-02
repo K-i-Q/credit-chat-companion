@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import fs from "fs";
 import http from "http";
 import path from "path";
@@ -132,7 +131,8 @@ const server = http.createServer(async (req, res) => {
 
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
     if (error) {
-      sendJson(res, 500, { error: error.message });
+      const isDuplicate = error.code === "23505";
+      sendJson(res, 500, { error: isDuplicate ? "Code already exists" : error.message });
       return;
     }
     const users = data?.users || [];
@@ -332,12 +332,24 @@ const server = http.createServer(async (req, res) => {
     }
 
     const credits = Number(payload?.credits);
+    const rawCode = typeof payload?.code === "string" ? payload.code.trim() : "";
+    const providedCode = rawCode ? rawCode.toLowerCase() : "";
     if (!Number.isInteger(credits) || credits <= 0) {
       sendJson(res, 400, { error: "Invalid credits" });
       return;
     }
 
-    const code = `mrx_${crypto.randomBytes(5).toString("hex")}`;
+    if (!providedCode) {
+      sendJson(res, 400, { error: "Code is required" });
+      return;
+    }
+
+    if (!/^[a-z0-9_-]{4,32}$/.test(providedCode)) {
+      sendJson(res, 400, { error: "Invalid code format" });
+      return;
+    }
+
+    const code = providedCode;
     const { data, error } = await supabaseAdmin
       .from("invite_links")
       .insert({ code, credits, created_by: auth.user.id })
@@ -375,22 +387,25 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const code = typeof payload?.code === "string" ? payload.code.trim() : "";
-    if (!code) {
-      sendJson(res, 400, { error: "Invalid code" });
-      return;
-    }
-
     const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
     if (userError || !userData?.user) {
       sendJson(res, 401, { error: "Invalid auth token" });
       return;
     }
 
+    const code = typeof payload?.code === "string" ? payload.code.trim().toLowerCase() : "";
+    const metadataCode = userData.user.user_metadata?.invite_code;
+    const resolvedCode =
+      code || (typeof metadataCode === "string" ? metadataCode.trim().toLowerCase() : "");
+    if (!resolvedCode) {
+      sendJson(res, 400, { error: "Invalid code" });
+      return;
+    }
+
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from("invite_links")
       .select("id, credits, active, uses_count")
-      .eq("code", code)
+      .eq("code", resolvedCode)
       .maybeSingle();
 
     if (inviteError || !invite || !invite.active) {
@@ -436,7 +451,7 @@ const server = http.createServer(async (req, res) => {
     const { data: topupData, error: topupError } = await supabaseAdmin.rpc("admin_topup_credits", {
       p_user_id: userData.user.id,
       p_amount: invite.credits,
-      p_meta: { source: "invite", code },
+      p_meta: { source: "invite", code: resolvedCode },
     });
 
     if (topupError) {
@@ -453,6 +468,12 @@ const server = http.createServer(async (req, res) => {
       .from("invite_links")
       .update({ uses_count: invite.uses_count + 1, last_used_at: new Date().toISOString() })
       .eq("id", invite.id);
+
+    if (metadataCode) {
+      await supabaseAdmin.auth.admin.updateUserById(userData.user.id, {
+        user_metadata: { ...userData.user.user_metadata, invite_code: null },
+      });
+    }
 
     const newBalance = Array.isArray(topupData) ? topupData[0]?.new_balance : topupData?.new_balance;
     sendJson(res, 200, { ok: true, new_balance: newBalance ?? null });

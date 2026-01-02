@@ -36,6 +36,7 @@ const Admin = () => {
   const [topupValues, setTopupValues] = useState<Record<string, string>>({});
   const [forbidden, setForbidden] = useState(false);
   const [inviteCredits, setInviteCredits] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const isAdmin = role === "admin";
@@ -177,6 +178,11 @@ const Admin = () => {
       toast.error("Informe um número inteiro de créditos.");
       return;
     }
+    const code = inviteCode.trim().toLowerCase();
+    if (!code) {
+      toast.error("Informe um código para o cupom.");
+      return;
+    }
     setInviteLoading(true);
     const response = await fetch(buildUrl("/api/admin/invites"), {
       method: "POST",
@@ -184,7 +190,7 @@ const Admin = () => {
         ...authHeader,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ credits }),
+      body: JSON.stringify({ credits, code }),
     });
     const data = await response.json().catch(() => ({}));
     setInviteLoading(false);
@@ -195,14 +201,14 @@ const Admin = () => {
     if (data?.invite) {
       setInvites((prev) => [data.invite, ...prev]);
       setInviteCredits("");
+      setInviteCode("");
       toast.success("Convite criado.");
     }
   };
 
-  const copyInviteLink = (code: string) => {
-    const link = `${window.location.origin}/auth?invite=${code}`;
-    navigator.clipboard.writeText(link).then(
-      () => toast.success("Link copiado."),
+  const copyInviteCode = (code: string) => {
+    navigator.clipboard.writeText(code).then(
+      () => toast.success("Cupom copiado."),
       () => toast.error("Não foi possível copiar.")
     );
   };
@@ -249,13 +255,13 @@ const Admin = () => {
           <>
             <Card>
               <CardHeader>
-                <CardTitle>Convites</CardTitle>
-                <CardDescription>Gere links com créditos para novos usuários.</CardDescription>
+                <CardTitle>Cupons</CardTitle>
+                <CardDescription>Crie cupons com créditos para novos usuários.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1">
-                    <label className="text-sm text-muted-foreground">Créditos do convite</label>
+                    <label className="text-sm text-muted-foreground">Créditos do cupom</label>
                     <input
                       type="number"
                       min={1}
@@ -265,8 +271,19 @@ const Admin = () => {
                       placeholder="Ex: 10"
                     />
                   </div>
+                  <div className="flex-1">
+                    <label className="text-sm text-muted-foreground">Código do cupom</label>
+                    <input
+                      type="text"
+                      className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      value={inviteCode}
+                      onChange={(event) => setInviteCode(event.target.value)}
+                      placeholder="Ex: mentorix10"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">Use 4-32 caracteres, letras, números, _ ou -</p>
+                  </div>
                   <Button onClick={createInvite} disabled={inviteLoading}>
-                    {inviteLoading ? "Criando..." : "Gerar link"}
+                    {inviteLoading ? "Criando..." : "Criar cupom"}
                   </Button>
                 </div>
 
@@ -285,14 +302,14 @@ const Admin = () => {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => copyInviteLink(invite.code)}
+                        onClick={() => copyInviteCode(invite.code)}
                       >
-                        Copiar link
+                        Copiar cupom
                       </Button>
                     </div>
                   ))}
                   {invites.length === 0 && (
-                    <div className="text-sm text-muted-foreground">Nenhum convite criado.</div>
+                    <div className="text-sm text-muted-foreground">Nenhum cupom criado.</div>
                   )}
                 </div>
               </CardContent>

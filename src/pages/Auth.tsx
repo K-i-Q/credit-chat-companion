@@ -26,11 +26,18 @@ const Auth = () => {
   }, [user, navigate]);
 
   useEffect(() => {
-    const invite = searchParams.get("invite");
-    if (invite) {
-      localStorage.setItem("mentorix_invite_code", invite);
-    }
-  }, [searchParams]);
+    const code = searchParams.get("code");
+    if (!code) return;
+
+    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+      if (error) {
+        toast.error("Falha ao confirmar o email.");
+      } else {
+        toast.success("Email confirmado. Você já pode entrar.");
+        navigate("/");
+      }
+    });
+  }, [navigate, searchParams]);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -52,11 +59,12 @@ const Auth = () => {
       return;
     }
     setLoading(true);
+    const redirectUrl = `${window.location.origin}/auth`;
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: redirectUrl,
       },
     });
     setLoading(false);
