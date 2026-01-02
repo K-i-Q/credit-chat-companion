@@ -365,6 +365,49 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/admin/invites/delete") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+      return;
+    }
+
+    const inviteId = payload?.invite_id;
+    if (!inviteId) {
+      sendJson(res, 400, { error: "Invalid invite_id" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("invite_links")
+      .delete()
+      .eq("id", inviteId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+
+    if (!data) {
+      sendJson(res, 404, { error: "Coupon not found" });
+      return;
+    }
+
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
   if (url.pathname === "/api/invite/redeem") {
     if (req.method !== "POST") {
       sendJson(res, 405, { error: "Method not allowed" });

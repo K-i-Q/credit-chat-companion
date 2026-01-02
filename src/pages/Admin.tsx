@@ -38,6 +38,7 @@ const Admin = () => {
   const [inviteCredits, setInviteCredits] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteDeletingId, setInviteDeletingId] = useState<string | null>(null);
 
   const isAdmin = role === "admin";
 
@@ -213,6 +214,30 @@ const Admin = () => {
     );
   };
 
+  const deleteInvite = async (inviteId: string) => {
+    if (!session?.access_token) return;
+    if (!window.confirm("Deseja excluir este cupom? Essa ação é irreversível.")) {
+      return;
+    }
+    setInviteDeletingId(inviteId);
+    const response = await fetch(buildUrl("/api/admin/invites/delete"), {
+      method: "POST",
+      headers: {
+        ...authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ invite_id: inviteId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    setInviteDeletingId(null);
+    if (!response.ok) {
+      toast.error(data?.error || "Erro ao excluir cupom.");
+      return;
+    }
+    setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
+    toast.success("Cupom excluído.");
+  };
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
@@ -259,8 +284,9 @@ const Admin = () => {
                 <CardDescription>Crie cupons com créditos para novos usuários.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <div className="flex-1">
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+                    <div>
                     <label className="text-sm text-muted-foreground">Créditos do cupom</label>
                     <input
                       type="number"
@@ -270,8 +296,8 @@ const Admin = () => {
                       onChange={(event) => setInviteCredits(event.target.value)}
                       placeholder="Ex: 10"
                     />
-                  </div>
-                  <div className="flex-1">
+                    </div>
+                    <div>
                     <label className="text-sm text-muted-foreground">Código do cupom</label>
                     <input
                       type="text"
@@ -280,11 +306,12 @@ const Admin = () => {
                       onChange={(event) => setInviteCode(event.target.value)}
                       placeholder="Ex: mentorix10"
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">Use 4-32 caracteres, letras, números, _ ou -</p>
+                    </div>
+                    <Button onClick={createInvite} disabled={inviteLoading} className="w-full sm:w-auto">
+                      {inviteLoading ? "Criando..." : "Criar cupom"}
+                    </Button>
                   </div>
-                  <Button onClick={createInvite} disabled={inviteLoading}>
-                    {inviteLoading ? "Criando..." : "Criar cupom"}
-                  </Button>
+                  <p className="text-xs text-muted-foreground">Use 4-32 caracteres, letras, números, _ ou -</p>
                 </div>
 
                 <div className="mt-6 space-y-3">
@@ -299,13 +326,23 @@ const Admin = () => {
                           Créditos: {invite.credits} · Usos: {invite.uses_count}
                         </div>
                       </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => copyInviteCode(invite.code)}
-                      >
-                        Copiar cupom
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => copyInviteCode(invite.code)}
+                        >
+                          Copiar cupom
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteInvite(invite.id)}
+                          disabled={inviteDeletingId === invite.id}
+                        >
+                          {inviteDeletingId === invite.id ? "Excluindo..." : "Excluir"}
+                        </Button>
+                      </div>
                     </div>
                   ))}
                   {invites.length === 0 && (
