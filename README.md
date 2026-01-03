@@ -24,7 +24,8 @@ Set secrets for Edge Functions:
 ```sh
 supabase secrets set OPENAI_API_KEY="your_api_key" \
 OPENAI_MODEL="gpt-4o-mini" \
-SERVICE_ROLE_KEY="your_service_role_key"
+SERVICE_ROLE_KEY="your_service_role_key" \
+MERCADOPAGO_ACCESS_TOKEN="your_mp_access_token"
 ```
 
 Deploy the functions:
@@ -38,6 +39,9 @@ supabase functions deploy admin-users-delete
 supabase functions deploy admin-invites
 supabase functions deploy admin-invites-delete
 supabase functions deploy invite-redeem
+supabase functions deploy pix-create
+supabase functions deploy pix-status
+supabase functions deploy mercadopago-webhook
 ```
 
 ## Useful scripts

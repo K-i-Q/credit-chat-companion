@@ -25,6 +25,14 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { getFunctionsErrorMessage } from '@/lib/functions';
 
+type PixPayment = {
+  id: string;
+  status: string;
+  qrCode?: string | null;
+  qrCodeBase64?: string | null;
+  ticketUrl?: string | null;
+};
+
 const Index = () => {
   const { user, signOut } = useAuth();
   const { role } = useProfileRole();
@@ -33,10 +41,15 @@ const Index = () => {
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
+  const [pixCredits, setPixCredits] = useState('');
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
+  const [pixStatus, setPixStatus] = useState<string>('pending');
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pixPollingRef = useRef<number | null>(null);
 
   const requestAssistantReply = async (currentMessages: ChatMessageType[]) => {
     const { data, error } = await supabase.functions.invoke('chat', {
@@ -158,6 +171,91 @@ const Index = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (pixPollingRef.current) {
+        window.clearInterval(pixPollingRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!creditsModalOpen && pixPollingRef.current) {
+      window.clearInterval(pixPollingRef.current);
+      pixPollingRef.current = null;
+    }
+  }, [creditsModalOpen]);
+
+  const startPixPolling = (paymentId: string) => {
+    if (pixPollingRef.current) {
+      window.clearInterval(pixPollingRef.current);
+    }
+    pixPollingRef.current = window.setInterval(async () => {
+      const { data, error } = await supabase.functions.invoke('pix-status', {
+        body: { payment_id: paymentId },
+      });
+      if (error) {
+        return;
+      }
+      if (data?.status) {
+        setPixStatus(data.status);
+      }
+      if (data?.status === 'approved') {
+        window.clearInterval(pixPollingRef.current ?? undefined);
+        pixPollingRef.current = null;
+        if (typeof data?.balance === 'number') {
+          setCreditsState(data.balance);
+          window.dispatchEvent(
+            new CustomEvent('mentorix-credits-updated', { detail: data.balance })
+          );
+        }
+        toast.success('Pagamento confirmado. Créditos adicionados!');
+      }
+    }, 5000);
+  };
+
+  const handleCreatePixPayment = async () => {
+    const creditsAmount = Number(pixCredits);
+    if (!Number.isInteger(creditsAmount) || creditsAmount <= 0) {
+      toast.error('Informe uma quantidade inteira de créditos.');
+      return;
+    }
+    setPixLoading(true);
+    setPixPayment(null);
+    const { data, error } = await supabase.functions.invoke('pix-create', {
+      body: { credits: creditsAmount },
+    });
+    setPixLoading(false);
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, 'Erro ao gerar PIX.');
+      toast.error(message);
+      return;
+    }
+    if (!data?.payment_id) {
+      toast.error('Não foi possível gerar o PIX.');
+      return;
+    }
+    setPixStatus(data.status || 'pending');
+    setPixPayment({
+      id: data.payment_id,
+      status: data.status || 'pending',
+      qrCode: data.qr_code,
+      qrCodeBase64: data.qr_code_base64,
+      ticketUrl: data.ticket_url,
+    });
+    startPixPolling(data.payment_id);
+  };
+
+  const handleCopyPix = async () => {
+    if (!pixPayment?.qrCode) return;
+    try {
+      await navigator.clipboard.writeText(pixPayment.qrCode);
+      toast.success('Código PIX copiado.');
+    } catch (_error) {
+      toast.error('Não foi possível copiar.');
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || credits <= 0 || isTyping || creditsLoading) return;
@@ -359,9 +457,63 @@ const Index = () => {
                 </p>
               </div>
               <DialogFooter className="sm:justify-start">
-                <Button type="button" variant="outline" disabled>
-                  Em breve
-                </Button>
+                <div className="w-full space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Quantidade de créditos</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={pixCredits}
+                        onChange={(event) => setPixCredits(event.target.value)}
+                        placeholder="Ex: 10"
+                      />
+                    </div>
+                    <Button onClick={handleCreatePixPayment} disabled={pixLoading}>
+                      {pixLoading ? 'Gerando...' : 'Gerar PIX'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Total: R$ {Number(pixCredits) > 0 ? Number(pixCredits).toFixed(2) : '0.00'}
+                  </p>
+                  {pixPayment && (
+                    <div className="rounded-lg border border-border p-3 space-y-3">
+                      <div className="text-xs text-muted-foreground">
+                        Status:{" "}
+                        <span className="font-semibold text-foreground">
+                          {pixStatus === 'approved' ? 'Pago' : 'Aguardando pagamento'}
+                        </span>
+                      </div>
+                      {pixPayment.qrCodeBase64 && (
+                        <div className="flex justify-center">
+                          <img
+                            src={`data:image/png;base64,${pixPayment.qrCodeBase64}`}
+                            alt="QR Code Pix"
+                            className="h-40 w-40"
+                          />
+                        </div>
+                      )}
+                      {pixPayment.qrCode && (
+                        <div className="space-y-2">
+                          <Input value={pixPayment.qrCode} readOnly />
+                          <Button type="button" variant="secondary" onClick={handleCopyPix}>
+                            Copiar código PIX
+                          </Button>
+                        </div>
+                      )}
+                      {pixPayment.ticketUrl && (
+                        <a
+                          href={pixPayment.ticketUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-primary underline"
+                        >
+                          Abrir Pix em nova aba
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
               </DialogFooter>
             </div>
           </div>
