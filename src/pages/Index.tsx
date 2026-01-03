@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Heart, LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun, Users } from 'lucide-react';
+import { Gift, Heart, LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -46,8 +46,14 @@ const Index = () => {
   const [creditsLoading, setCreditsLoading] = useState(true);
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
   const [donationModalOpen, setDonationModalOpen] = useState(false);
+  const [referralModalOpen, setReferralModalOpen] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralInput, setReferralInput] = useState('');
+  const [referralApplyLoading, setReferralApplyLoading] = useState(false);
+  const [referralApplyMessage, setReferralApplyMessage] = useState<string | null>(null);
   const [pixCredits, setPixCredits] = useState('');
   const [pixLoading, setPixLoading] = useState(false);
   const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
@@ -211,6 +217,58 @@ const Index = () => {
       return;
     }
     setCommunityModalOpen(true);
+  };
+
+  const handleOpenReferral = async () => {
+    setReferralModalOpen(true);
+    setReferralApplyMessage(null);
+    if (referralCode) return;
+    setReferralLoading(true);
+    const { data, error } = await supabase.functions.invoke('referral-code');
+    setReferralLoading(false);
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, 'Erro ao carregar o cupom.');
+      showSupportError(message);
+      return;
+    }
+    setReferralCode(data?.code || '');
+  };
+
+  const handleCopyReferral = async () => {
+    if (!referralCode) return;
+    try {
+      await navigator.clipboard.writeText(referralCode);
+      toast.success('Cupom copiado.');
+    } catch (_error) {
+      toast.error('Não foi possível copiar.');
+    }
+  };
+
+  const handleApplyReferralCode = async () => {
+    const code = referralInput.trim().toLowerCase();
+    if (!code) {
+      toast.error('Informe um cupom válido.');
+      return;
+    }
+    setReferralApplyLoading(true);
+    setReferralApplyMessage(null);
+    const { data, error } = await supabase.functions.invoke('referral-apply', {
+      body: { code },
+    });
+    setReferralApplyLoading(false);
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, 'Erro ao aplicar o cupom.');
+      showSupportError(message);
+      return;
+    }
+    if (data?.already_redeemed) {
+      setReferralApplyMessage('Você já aplicou um cupom.');
+      return;
+    }
+    setReferralApplyMessage(
+      'Cupom aplicado! O bônus de 10 créditos será liberado quando você comprar 10 ou mais créditos.'
+    );
+    setReferralInput('');
   };
 
   useEffect(() => {
@@ -594,6 +652,10 @@ const Index = () => {
               <span className="hidden sm:inline">Comunidade</span>
             </Button>
           )}
+          <Button variant="ghost" size="sm" onClick={handleOpenReferral} className="gap-1.5">
+            <Gift className="h-4 w-4" />
+            <span className="hidden sm:inline">Meu cupom</span>
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleOpenDonation} className="gap-1.5">
             <Heart className="h-4 w-4" />
             <span className="hidden sm:inline">Apoiar</span>
@@ -689,6 +751,29 @@ const Index = () => {
                   {redeemLoading ? 'Resgatando...' : 'Resgatar'}
                 </Button>
               </div>
+            </div>
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Usar cupom de indicação</h3>
+                <p className="text-xs text-muted-foreground">
+                  Use o cupom de outra pessoa. O bônus de 10 créditos para ambos só libera
+                  quando você comprar 10 ou mais créditos. Aplique antes da compra.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={referralInput}
+                  onChange={(event) => setReferralInput(event.target.value)}
+                  placeholder="Ex: mx1234abcd"
+                  autoComplete="off"
+                />
+                <Button onClick={handleApplyReferralCode} disabled={referralApplyLoading}>
+                  {referralApplyLoading ? 'Aplicando...' : 'Aplicar cupom'}
+                </Button>
+              </div>
+              {referralApplyMessage && (
+                <p className="text-xs text-muted-foreground">{referralApplyMessage}</p>
+              )}
             </div>
             {!hasPaidAccess && (
               <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
@@ -885,6 +970,45 @@ const Index = () => {
             <p className="text-xs text-muted-foreground">
               Para comprar créditos, use a opção de créditos no topo. Doação não gera créditos.
             </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Seu cupom exclusivo</DialogTitle>
+            <DialogDescription>
+              Compartilhe com amigos. Quando alguém usar o cupom e comprar 10 ou mais créditos,
+              vocês dois ganham 10 créditos (o cupom deve ser aplicado antes da compra).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+              {referralLoading ? 'Gerando seu cupom...' : referralCode || 'Cupom indisponível.'}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleCopyReferral}
+                disabled={!referralCode || referralLoading}
+              >
+                Copiar cupom
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReferralModalOpen(false)}
+              >
+                Fechar
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>1. A pessoa cria conta e aplica o cupom na área de créditos antes da compra.</p>
+              <p>2. Quando ela comprar 10+ créditos, ambos recebem +10 créditos.</p>
+              <p>3. Cada pessoa pode usar apenas 1 cupom de indicação.</p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

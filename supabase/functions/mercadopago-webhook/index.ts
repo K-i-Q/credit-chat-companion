@@ -124,6 +124,61 @@ Deno.serve(async (req) => {
         })
         .eq("id", purchase.id);
 
+      if (purchase.credits >= 10) {
+        const { data: redemption, error: redemptionError } = await supabaseAdmin
+          .from("referral_redemptions")
+          .select("id, referrer_user_id")
+          .eq("referred_user_id", purchase.user_id)
+          .is("rewarded_at", null)
+          .maybeSingle();
+
+        if (redemptionError) {
+          return jsonResponse({ error: redemptionError.message }, 500);
+        }
+
+        if (redemption) {
+          const { data: lockRow, error: lockError } = await supabaseAdmin
+            .from("referral_redemptions")
+            .update({ rewarded_at: now, purchase_id: purchase.id })
+            .eq("id", redemption.id)
+            .is("rewarded_at", null)
+            .select("id, referrer_user_id")
+            .maybeSingle();
+
+          if (lockError) {
+            return jsonResponse({ error: lockError.message }, 500);
+          }
+
+          if (lockRow) {
+            const rewardMeta = {
+              source: "referral",
+              purchase_id: purchase.id,
+              payment_id: providerPaymentId,
+            };
+
+            const { error: referredError } = await supabaseAdmin.rpc("admin_topup_credits", {
+              p_user_id: purchase.user_id,
+              p_amount: 10,
+              p_meta: { ...rewardMeta, role: "referred" },
+            });
+
+            if (referredError) {
+              return jsonResponse({ error: referredError.message }, 500);
+            }
+
+            const { error: referrerError } = await supabaseAdmin.rpc("admin_topup_credits", {
+              p_user_id: lockRow.referrer_user_id,
+              p_amount: 10,
+              p_meta: { ...rewardMeta, role: "referrer" },
+            });
+
+            if (referrerError) {
+              return jsonResponse({ error: referrerError.message }, 500);
+            }
+          }
+        }
+      }
+
       return jsonResponse({ ok: true, new_balance: topupData?.new_balance ?? null }, 200);
     }
 
