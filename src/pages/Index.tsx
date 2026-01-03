@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun } from 'lucide-react';
+import { LogOut, Menu, Moon, RotateCcw, Send, Settings, Sparkles, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,6 +10,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ChatMessage } from '@/components/ChatMessage';
 import { CreditsBanner } from '@/components/CreditsBanner';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,6 +41,7 @@ type PixPayment = {
   qrCodeBase64?: string | null;
   ticketUrl?: string | null;
   receiverName?: string | null;
+  receiverInstitution?: string | null;
 };
 
 type DonationPayment = PixPayment;
@@ -56,6 +65,8 @@ const Index = () => {
   const [donationStatus, setDonationStatus] = useState<string>('pending');
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
   const [paidAccessLoading, setPaidAccessLoading] = useState(false);
+  const [communityModalOpen, setCommunityModalOpen] = useState(false);
+  const [creditsModalSection, setCreditsModalSection] = useState<'buy' | 'donate' | null>(null);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -63,6 +74,8 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pixPollingRef = useRef<number | null>(null);
   const donationPollingRef = useRef<number | null>(null);
+  const buySectionRef = useRef<HTMLDivElement>(null);
+  const donateSectionRef = useRef<HTMLDivElement>(null);
   const whatsappGroupUrl = import.meta.env.VITE_WHATSAPP_GROUP_URL || '';
   const developerName = 'Carlos Oliveira';
 
@@ -178,8 +191,17 @@ const Index = () => {
     }
   };
 
-  const handleOpenCredits = () => {
+  const handleOpenCredits = (section: 'buy' | 'donate' | null = null) => {
+    setCreditsModalSection(section);
     setCreditsModalOpen(true);
+  };
+
+  const handleOpenCommunity = () => {
+    if (!hasPaidAccess) {
+      toast.error('Compre créditos para desbloquear o acesso.');
+      return;
+    }
+    setCommunityModalOpen(true);
   };
 
   useEffect(() => {
@@ -267,6 +289,13 @@ const Index = () => {
   }, [creditsModalOpen, isTyping]);
 
   useEffect(() => {
+    if (!creditsModalOpen || !creditsModalSection) return;
+    const target =
+      creditsModalSection === 'buy' ? buySectionRef.current : donateSectionRef.current;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [creditsModalOpen, creditsModalSection]);
+
+  useEffect(() => {
     return () => {
       if (pixPollingRef.current) {
         window.clearInterval(pixPollingRef.current);
@@ -312,6 +341,7 @@ const Index = () => {
           );
         }
         setHasPaidAccess(true);
+        setCommunityModalOpen(true);
         toast.success('Pagamento confirmado. Créditos adicionados!');
       }
     }, 5000);
@@ -368,6 +398,7 @@ const Index = () => {
       qrCodeBase64: data.qr_code_base64,
       ticketUrl: data.ticket_url,
       receiverName: data.receiver_name,
+      receiverInstitution: data.receiver_institution,
     });
     startPixPolling(data.payment_id);
   };
@@ -402,6 +433,7 @@ const Index = () => {
       qrCodeBase64: data.qr_code_base64,
       ticketUrl: data.ticket_url,
       receiverName: data.receiver_name,
+      receiverInstitution: data.receiver_institution,
     });
     startDonationPolling(data.payment_id);
   };
@@ -527,47 +559,97 @@ const Index = () => {
           {user?.email && (
             <span className="hidden sm:inline text-sm text-muted-foreground">{user.email}</span>
           )}
-          {role === 'admin' && (
-            <Button variant="ghost" size="sm" asChild className="gap-1.5">
-              <Link to="/admin">
-                <Settings className="h-4 w-4" />
-                <span className="hidden sm:inline">Admin</span>
-              </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                  hasNoCredits
+                    ? 'bg-destructive/15 text-destructive'
+                    : 'bg-credits text-credits-foreground'
+                }`}
+              >
+                Créditos: {creditsLoading ? '...' : credits}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Créditos</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => handleOpenCredits('buy')}>
+                Comprar créditos
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleOpenCredits('donate')}>
+                Apoiar o projeto
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={handleOpenCommunity} disabled={!hasPaidAccess}>
+                Comunidade WhatsApp
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div className="hidden sm:flex items-center gap-3">
+            {role === 'admin' && (
+              <Button variant="ghost" size="sm" asChild className="gap-1.5">
+                <Link to="/admin">
+                  <Settings className="h-4 w-4" />
+                  <span className="hidden sm:inline">Admin</span>
+                </Link>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="gap-1.5"
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="hidden sm:inline">Tema</span>
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="gap-1.5"
-          >
-            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            <span className="hidden sm:inline">Tema</span>
-          </Button>
-          <button
-            type="button"
-            onClick={handleOpenCredits}
-            className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-              hasNoCredits
-                ? 'bg-destructive/15 text-destructive'
-                : 'bg-credits text-credits-foreground'
-            }`}
-          >
-            Créditos: {creditsLoading ? '...' : credits}
-          </button>
-          <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
-            <RotateCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Reset</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={signOut}
-            className="gap-1.5"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Sair</span>
-          </Button>
+            <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">Reset</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={signOut}
+              className="gap-1.5"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="sm:hidden">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Menu</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => handleOpenCredits('buy')}>
+                Comprar créditos
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleOpenCredits('donate')}>
+                Apoiar o projeto
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleOpenCommunity} disabled={!hasPaidAccess}>
+                Comunidade WhatsApp
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {role === 'admin' && (
+                <DropdownMenuItem asChild>
+                  <Link to="/admin">Admin</Link>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              >
+                Tema {theme === 'dark' ? 'claro' : 'escuro'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleResetChat}>Reset</DropdownMenuItem>
+              <DropdownMenuItem onSelect={signOut}>Sair</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -638,7 +720,7 @@ const Index = () => {
                 </Button>
               </div>
             </div>
-            <div className="border-t border-border pt-4 space-y-3">
+            <div ref={buySectionRef} className="border-t border-border pt-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Comprar créditos</h3>
                 <p className="text-xs text-muted-foreground">
@@ -687,6 +769,14 @@ const Index = () => {
                               </span>
                             </div>
                           )}
+                          {pixPayment.receiverInstitution && (
+                            <div className="text-xs text-muted-foreground">
+                              Instituição:{" "}
+                              <span className="font-semibold text-foreground">
+                                {pixPayment.receiverInstitution}
+                              </span>
+                            </div>
+                          )}
                           {pixPayment.qrCodeBase64 && (
                             <div className="flex justify-center">
                               <img
@@ -721,7 +811,7 @@ const Index = () => {
                 </div>
               </DialogFooter>
             </div>
-            <div className="border-t border-border pt-4 space-y-3">
+            <div ref={donateSectionRef} className="border-t border-border pt-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Apoiar o projeto</h3>
                 <p className="text-xs text-muted-foreground">
@@ -771,6 +861,14 @@ const Index = () => {
                               </span>
                             </div>
                           )}
+                          {donationPayment.receiverInstitution && (
+                            <div className="text-xs text-muted-foreground">
+                              Instituição:{" "}
+                              <span className="font-semibold text-foreground">
+                                {donationPayment.receiverInstitution}
+                              </span>
+                            </div>
+                          )}
                           {donationPayment.qrCodeBase64 && (
                             <div className="flex justify-center">
                               <img
@@ -808,31 +906,32 @@ const Index = () => {
                 </div>
               </DialogFooter>
             </div>
-            <div className="border-t border-border pt-4 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Comunidade WhatsApp</h3>
-                <p className="text-xs text-muted-foreground">
-                  Disponível apenas para quem já comprou créditos.
-                </p>
-              </div>
-              {paidAccessLoading ? (
-                <p className="text-xs text-muted-foreground">Verificando acesso...</p>
-              ) : hasPaidAccess ? (
-                whatsappGroupUrl ? (
-                  <Button asChild variant="secondary">
-                    <a href={whatsappGroupUrl} target="_blank" rel="noreferrer">
-                      Entrar no grupo
-                    </a>
-                  </Button>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Link do grupo não configurado.</p>
-                )
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Compre créditos para desbloquear o acesso.
-                </p>
-              )}
-            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={communityModalOpen} onOpenChange={setCommunityModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Comunidade Mentorix</DialogTitle>
+            <DialogDescription>
+              Suporte e comunidade exclusiva para quem comprou créditos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              Você desbloqueou o acesso à comunidade no WhatsApp. Lá você pode pedir ajuda,
+              relatar erros e trocar ideias com a galera.
+            </p>
+            {whatsappGroupUrl ? (
+              <Button asChild variant="secondary">
+                <a href={whatsappGroupUrl} target="_blank" rel="noreferrer">
+                  Entrar no grupo
+                </a>
+              </Button>
+            ) : (
+              <p>Link do grupo não configurado.</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>

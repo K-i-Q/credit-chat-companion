@@ -26,7 +26,10 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "MERCADOPAGO_ACCESS_TOKEN is not set" }, 500);
   }
 
-  let receiverName: string | null = null;
+  const receiverOverrideName = Deno.env.get("PIX_RECEIVER_NAME");
+  const receiverOverrideInstitution = Deno.env.get("PIX_RECEIVER_INSTITUTION");
+  let receiverName: string | null = receiverOverrideName ?? null;
+  let receiverInstitution: string | null = receiverOverrideInstitution ?? null;
   try {
     const receiverResponse = await fetch("https://api.mercadopago.com/users/me", {
       headers: {
@@ -36,13 +39,14 @@ Deno.serve(async (req) => {
     const receiverData = await receiverResponse.json().catch(() => null);
     if (receiverResponse.ok && receiverData) {
       receiverName =
+        receiverName ||
         receiverData.nickname ||
         [receiverData.first_name, receiverData.last_name].filter(Boolean).join(" ") ||
         receiverData.email ||
         null;
     }
   } catch (_error) {
-    receiverName = null;
+    receiverName = receiverName ?? null;
   }
 
   const paymentId = crypto.randomUUID();
@@ -106,6 +110,7 @@ Deno.serve(async (req) => {
       metadata: {
         mp_status_detail: data?.status_detail ?? null,
         receiver_name: receiverName,
+        receiver_institution: receiverInstitution,
       },
     });
 
@@ -121,6 +126,7 @@ Deno.serve(async (req) => {
       qr_code_base64: qrCodeBase64,
       ticket_url: ticketUrl,
       receiver_name: receiverName,
+      receiver_institution: receiverInstitution,
     },
     200
   );
