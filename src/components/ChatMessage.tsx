@@ -1,3 +1,5 @@
+import { Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { ChatMessage as ChatMessageType } from '@/lib/storage';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -8,6 +10,16 @@ interface ChatMessageProps {
 
 export const ChatMessage = ({ message }: ChatMessageProps) => {
   const isUser = message.role === 'user';
+
+  const handleCopy = async () => {
+    if (!message.content) return;
+    try {
+      await navigator.clipboard.writeText(message.content);
+      toast.success('Resposta copiada.');
+    } catch (_error) {
+      toast.error('Não foi possível copiar.');
+    }
+  };
   
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -18,6 +30,18 @@ export const ChatMessage = ({ message }: ChatMessageProps) => {
             : 'bg-muted text-foreground rounded-bl-md'
         }`}
       >
+        {!isUser && (
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copiar prompt
+            </button>
+          </div>
+        )}
         <div className="text-sm md:text-base leading-relaxed break-words">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

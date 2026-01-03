@@ -77,6 +77,7 @@ const Index = () => {
   const [paidAccessLoading, setPaidAccessLoading] = useState(false);
   const [communityModalOpen, setCommunityModalOpen] = useState(false);
   const [supportError, setSupportError] = useState<string | null>(null);
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -100,6 +101,61 @@ const Index = () => {
 
   const clearSupportError = () => {
     setSupportError(null);
+  };
+
+  const promptTemplates = [
+    {
+      id: 'site-institucional',
+      label: 'Site institucional',
+      prompt:
+        'Crie um site institucional moderno para {NOME_DA_MARCA}.\n' +
+        'Segmento: {SEGMENTO}\n' +
+        'Cidade/Região: {CIDADE}\n' +
+        'WhatsApp: {WHATSAPP}\n' +
+        'Estilo: {ESTILO}\n' +
+        'Seções: Hero, Sobre, Serviços, Depoimentos, Contato.\n' +
+        'Tom: profissional e claro.\n' +
+        'Objetivo: captar contatos locais.',
+    },
+    {
+      id: 'landing-page',
+      label: 'Landing page',
+      prompt:
+        'Crie uma landing page para {PRODUTO_OU_SERVICO}.\n' +
+        'Público-alvo: {PUBLICO}\n' +
+        'Oferta: {OFERTA}\n' +
+        'Prova social: {PROVA_SOCIAL}\n' +
+        'CTA principal: {CTA}\n' +
+        'Estilo: {ESTILO}\n' +
+        'Objetivo: conversão.',
+    },
+    {
+      id: 'blog',
+      label: 'Blog',
+      prompt:
+        'Crie a estrutura de um blog para {TEMA_DO_BLOG}.\n' +
+        'Autor/Marca: {AUTOR}\n' +
+        'Categorias: {CATEGORIAS}\n' +
+        'Estilo: {ESTILO}\n' +
+        'Objetivo: conteúdo educativo e SEO.',
+    },
+    {
+      id: 'sistema-web',
+      label: 'Sistema web',
+      prompt:
+        'Crie um sistema web para {OBJETIVO}.\n' +
+        'Usuários: {TIPO_DE_USUARIO}\n' +
+        'Funcionalidades essenciais: {FUNCIONALIDADES}\n' +
+        'Dados principais: {DADOS}\n' +
+        'Estilo: {ESTILO}\n' +
+        'Prioridade: simples e funcional.',
+    },
+  ];
+
+  const applyTemplate = (template: typeof promptTemplates[number]) => {
+    setActiveTemplateId(template.id);
+    setInputValue(template.prompt);
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const streamAssistantReply = async (
@@ -545,6 +601,25 @@ const Index = () => {
     if (!inputValue.trim() || credits <= 0 || isTyping || creditsLoading) return;
 
     clearSupportError();
+    if (activeTemplateId) {
+      const matches = Array.from(inputValue.matchAll(/\{([A-Z0-9_]+)\}/g)).map(
+        (match) => match[1]
+      );
+      const missingFields = Array.from(new Set(matches));
+      if (missingFields.length > 0) {
+        const assistantMessage: ChatMessageType = {
+          id: generateId(),
+          role: 'assistant',
+          content: `Antes de continuar, preencha: ${missingFields.join(', ')}.`,
+          timestamp: Date.now(),
+        };
+        const updated = [...messages, assistantMessage];
+        setMessages(updated);
+        setChatHistory(updated);
+        inputRef.current?.focus();
+        return;
+      }
+    }
     const userMessage: ChatMessageType = {
       id: generateId(),
       role: 'user',
@@ -558,6 +633,7 @@ const Index = () => {
     setInputValue('');
     setIsTyping(true);
     inputRef.current?.focus();
+    setActiveTemplateId(null);
 
     const assistantId = generateId();
     const assistantMessage: ChatMessageType = {
@@ -804,9 +880,27 @@ const Index = () => {
               Bem-vindo ao Mentorix!
             </h2>
             <p className="text-muted-foreground max-w-md">
-              Faça qualquer pergunta e receba orientações personalizadas. 
-              Cada resposta consome 1 crédito.
+              Digite o que você quer criar (site, sistema web, blog ou landing page) e eu devolvo
+              prompts prontos. Cada resposta consome 1 crédito.
             </p>
+            <div className="mt-6 w-full max-w-2xl space-y-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Templates rápidos (clique para editar)
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {promptTemplates.map((template) => (
+                  <Button
+                    key={template.id}
+                    type="button"
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => applyTemplate(template)}
+                  >
+                    {template.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto">
@@ -841,9 +935,9 @@ const Index = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            <div className="space-y-3">
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Aplicar cupom</h3>
+                <h3 className="text-sm font-semibold text-foreground">Cupons</h3>
                 <p className="text-xs text-muted-foreground">
                   Aceita cupom de créditos ou cupom de indicação. Se for indicação, o bônus
                   libera após comprar 10+ créditos.
@@ -872,7 +966,7 @@ const Index = () => {
                 Compre qualquer quantidade de créditos para desbloquear a Comunidade WhatsApp.
               </div>
             )}
-            <div className="border-t border-border pt-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Comprar créditos</h3>
                 <p className="text-xs text-muted-foreground">
