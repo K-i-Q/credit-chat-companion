@@ -59,6 +59,7 @@ const Index = () => {
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
   const [paidAccessLoading, setPaidAccessLoading] = useState(false);
   const [communityModalOpen, setCommunityModalOpen] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -68,6 +69,21 @@ const Index = () => {
   const donationPollingRef = useRef<number | null>(null);
   const whatsappGroupUrl = import.meta.env.VITE_WHATSAPP_GROUP_URL || '';
   const developerName = 'Carlos Oliveira';
+  const supportNumber = '41998157500';
+
+  const buildSupportLink = (message: string) => {
+    const text = `Preciso de suporte no Mentorix. Erro: ${message}`;
+    return `https://wa.me/55${supportNumber}?text=${encodeURIComponent(text)}`;
+  };
+
+  const showSupportError = (message: string) => {
+    toast.error(message);
+    setSupportError(message);
+  };
+
+  const clearSupportError = () => {
+    setSupportError(null);
+  };
 
   const streamAssistantReply = async (
     currentMessages: ChatMessageType[],
@@ -154,7 +170,7 @@ const Index = () => {
         if (message.toLowerCase().includes('invite not found')) {
           toast.error('Cupom inválido ou expirado.');
         } else {
-          toast.error(message);
+          showSupportError(message);
         }
         return;
       }
@@ -175,7 +191,7 @@ const Index = () => {
       setCreditsModalOpen(false);
       toast.success('Cupom resgatado com sucesso.');
     } catch (error) {
-      toast.error('Erro ao resgatar cupom.');
+      showSupportError('Erro ao resgatar cupom.');
     } finally {
       setRedeemLoading(false);
     }
@@ -211,7 +227,7 @@ const Index = () => {
         .eq('user_id', user.id)
         .maybeSingle();
       if (error) {
-        toast.error('Falha ao carregar créditos.');
+        showSupportError('Falha ao carregar créditos.');
       } else if (!data) {
         await supabase.rpc('ensure_user_bootstrap').catch(() => {});
         const retry = await supabase
@@ -315,6 +331,7 @@ const Index = () => {
         body: { payment_id: paymentId },
       });
       if (error) {
+        showSupportError('Falha ao verificar o pagamento.');
         return;
       }
       if (data?.status) {
@@ -345,6 +362,7 @@ const Index = () => {
         body: { payment_id: paymentId },
       });
       if (error) {
+        showSupportError('Falha ao verificar a doação.');
         return;
       }
       if (data?.status) {
@@ -372,11 +390,11 @@ const Index = () => {
     setPixLoading(false);
     if (error) {
       const message = await getFunctionsErrorMessage(error, 'Erro ao gerar PIX.');
-      toast.error(message);
+      showSupportError(message);
       return;
     }
     if (!data?.payment_id) {
-      toast.error('Não foi possível gerar o PIX.');
+      showSupportError('Não foi possível gerar o PIX.');
       return;
     }
     setPixStatus(data.status || 'pending');
@@ -407,11 +425,11 @@ const Index = () => {
     setDonationLoading(false);
     if (error) {
       const message = await getFunctionsErrorMessage(error, 'Erro ao gerar PIX.');
-      toast.error(message);
+      showSupportError(message);
       return;
     }
     if (!data?.payment_id) {
-      toast.error('Não foi possível gerar o PIX.');
+      showSupportError('Não foi possível gerar o PIX.');
       return;
     }
     setDonationStatus(data.status || 'pending');
@@ -450,6 +468,7 @@ const Index = () => {
   const handleSendMessage = async () => {
     if (!inputValue.trim() || credits <= 0 || isTyping || creditsLoading) return;
 
+    clearSupportError();
     const userMessage: ChatMessageType = {
       id: generateId(),
       role: 'user',
@@ -494,7 +513,7 @@ const Index = () => {
           p_meta: { source: 'chat' },
         });
         if (error) {
-          toast.error(error.message || 'Erro ao debitar créditos.');
+          showSupportError(error.message || 'Erro ao debitar créditos.');
         } else {
           const newBalance = Array.isArray(data) ? data[0]?.new_balance : data?.new_balance;
           if (typeof newBalance === 'number') {
@@ -505,6 +524,7 @@ const Index = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('Chat request failed', error);
+      showSupportError(errorMessage);
       setMessages((prev) => {
         const updated = prev.map((msg) =>
           msg.id === assistantId
@@ -525,6 +545,7 @@ const Index = () => {
     setChatHistory([]);
     setInputValue('');
     setIsTyping(false);
+    clearSupportError();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -537,9 +558,9 @@ const Index = () => {
   const hasNoCredits = credits <= 0 && !creditsLoading;
 
   return (
-    <div className="flex flex-col h-screen max-h-screen bg-background">
+    <div className="flex flex-col min-h-[100dvh] bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-card border-b border-border shadow-sm">
+      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-card border-b border-border shadow-sm">
         <div className="flex items-center gap-2">
           <Sparkles className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-bold text-foreground">Mentorix</h1>
@@ -742,6 +763,7 @@ const Index = () => {
                           )}
                           {pixPayment.qrCode && (
                             <div className="space-y-2">
+                              <div className="text-xs text-muted-foreground">PIX copia e cola</div>
                               <Input value={pixPayment.qrCode} readOnly />
                               <Button type="button" variant="secondary" onClick={handleCopyPix}>
                                 Copiar código PIX
@@ -839,6 +861,7 @@ const Index = () => {
                     )}
                     {donationPayment.qrCode && (
                       <div className="space-y-2">
+                        <div className="text-xs text-muted-foreground">PIX copia e cola</div>
                         <Input value={donationPayment.qrCode} readOnly />
                         <Button type="button" variant="secondary" onClick={handleCopyDonation}>
                           Copiar código PIX
@@ -893,7 +916,29 @@ const Index = () => {
       </Dialog>
 
       {/* Input Area */}
-      <div className="p-4 bg-card border-t border-border">
+      <div className="sticky bottom-0 z-30 p-4 bg-card border-t border-border">
+        {supportError && (
+          <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>Ocorreu um erro. Precisa de ajuda?</span>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="h-7 border-destructive/40 text-destructive hover:text-destructive"
+                >
+                  <a href={buildSupportLink(supportError)} target="_blank" rel="noreferrer">
+                    Falar com suporte
+                  </a>
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7" onClick={clearSupportError}>
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2 max-w-4xl mx-auto">
           <input
             type="text"
