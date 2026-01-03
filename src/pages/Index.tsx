@@ -1054,7 +1054,10 @@ const Index = () => {
       </Dialog>
 
       <Dialog open={donationModalOpen} onOpenChange={setDonationModalOpen}>
-        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-md max-h-[85dvh] overflow-y-auto"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Apoiar o projeto</DialogTitle>
             <DialogDescription>

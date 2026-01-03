@@ -10,6 +10,7 @@ interface ChatMessageProps {
 
 export const ChatMessage = ({ message }: ChatMessageProps) => {
   const isUser = message.role === 'user';
+  const canCopy = !isUser && Boolean(message.content?.trim());
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -30,7 +31,7 @@ export const ChatMessage = ({ message }: ChatMessageProps) => {
             : 'bg-muted text-foreground rounded-bl-md'
         }`}
       >
-        {!isUser && (
+        {canCopy && (
           <div className="mb-2 flex justify-end">
             <button
               type="button"
@@ -72,6 +73,18 @@ export const ChatMessage = ({ message }: ChatMessageProps) => {
             {message.content}
           </ReactMarkdown>
         </div>
+        {canCopy && (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copiar prompt
+            </button>
+          </div>
+        )}
         <span className={`text-xs mt-2 block ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
           {new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
         </span>
