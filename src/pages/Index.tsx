@@ -64,9 +64,7 @@ const Index = () => {
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [referralCode, setReferralCode] = useState('');
   const [referralLoading, setReferralLoading] = useState(false);
-  const [referralInput, setReferralInput] = useState('');
-  const [referralApplyLoading, setReferralApplyLoading] = useState(false);
-  const [referralApplyMessage, setReferralApplyMessage] = useState<string | null>(null);
+  const [redeemMessage, setRedeemMessage] = useState<string | null>(null);
   const [pixCredits, setPixCredits] = useState('');
   const [pixLoading, setPixLoading] = useState(false);
   const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
@@ -174,6 +172,7 @@ const Index = () => {
       return;
     }
     setRedeemLoading(true);
+    setRedeemMessage(null);
     try {
       if (!user) {
         toast.error('Faça login para resgatar um cupom.');
@@ -186,11 +185,39 @@ const Index = () => {
 
       if (error) {
         const message = await getFunctionsErrorMessage(error, 'Erro ao resgatar cupom.');
-        if (message.toLowerCase().includes('invite not found')) {
-          toast.error('Cupom inválido ou expirado.');
-        } else {
+        const status = (error as { context?: Response }).context?.status;
+        const notFound = status === 404 || message.toLowerCase().includes('invite not found');
+        if (!notFound) {
           showSupportError(message);
+          return;
         }
+
+        const referralResult = await supabase.functions.invoke('referral-apply', {
+          body: { code },
+        });
+        if (referralResult.error) {
+          const referralMessage = await getFunctionsErrorMessage(
+            referralResult.error,
+            'Erro ao aplicar cupom.'
+          );
+          const lower = referralMessage.toLowerCase();
+          if (lower.includes('referral not found')) {
+            toast.error('Cupom inválido ou expirado.');
+          } else if (lower.includes('cannot use your own code')) {
+            toast.error('Você não pode usar seu próprio cupom.');
+          } else {
+            showSupportError(referralMessage);
+          }
+          return;
+        }
+        if (referralResult.data?.already_redeemed) {
+          setRedeemMessage('Você já aplicou um cupom de indicação.');
+          return;
+        }
+        setRedeemMessage(
+          'Cupom de indicação aplicado! O bônus de 10 créditos libera quando você comprar 10+ créditos.'
+        );
+        setCouponCode('');
         return;
       }
 
@@ -218,6 +245,7 @@ const Index = () => {
 
   const handleOpenCredits = () => {
     setMobileMenuOpen(false);
+    setRedeemMessage(null);
     setCreditsModalOpen(true);
   };
 
@@ -238,7 +266,6 @@ const Index = () => {
   const handleOpenReferral = async () => {
     setMobileMenuOpen(false);
     setReferralModalOpen(true);
-    setReferralApplyMessage(null);
     if (referralCode) return;
     setReferralLoading(true);
     const { data, error } = await supabase.functions.invoke('referral-code');
@@ -261,32 +288,6 @@ const Index = () => {
     }
   };
 
-  const handleApplyReferralCode = async () => {
-    const code = referralInput.trim().toLowerCase();
-    if (!code) {
-      toast.error('Informe um cupom válido.');
-      return;
-    }
-    setReferralApplyLoading(true);
-    setReferralApplyMessage(null);
-    const { data, error } = await supabase.functions.invoke('referral-apply', {
-      body: { code },
-    });
-    setReferralApplyLoading(false);
-    if (error) {
-      const message = await getFunctionsErrorMessage(error, 'Erro ao aplicar o cupom.');
-      showSupportError(message);
-      return;
-    }
-    if (data?.already_redeemed) {
-      setReferralApplyMessage('Você já aplicou um cupom.');
-      return;
-    }
-    setReferralApplyMessage(
-      'Cupom aplicado! O bônus de 10 créditos será liberado quando você comprar 10 ou mais créditos.'
-    );
-    setReferralInput('');
-  };
 
   useEffect(() => {
     setMessages(getChatHistory());
@@ -832,7 +833,7 @@ const Index = () => {
       {hasNoCredits && <CreditsBanner onOpenCredits={handleOpenCredits} />}
 
       <Dialog open={creditsModalOpen} onOpenChange={setCreditsModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Créditos</DialogTitle>
             <DialogDescription>
@@ -842,44 +843,28 @@ const Index = () => {
           <div className="space-y-6">
             <div className="space-y-3">
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Resgatar cupom</h3>
+                <h3 className="text-sm font-semibold text-foreground">Aplicar cupom</h3>
                 <p className="text-xs text-muted-foreground">
-                  Insira o código do cupom para receber créditos.
+                  Aceita cupom de créditos ou cupom de indicação. Se for indicação, o bônus
+                  libera após comprar 10+ créditos.
                 </p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   value={couponCode}
-                  onChange={(event) => setCouponCode(event.target.value)}
-                  placeholder="Ex: mentorix10"
+                  onChange={(event) => {
+                    setCouponCode(event.target.value);
+                    setRedeemMessage(null);
+                  }}
+                  placeholder="Ex: mentorix10 ou mx1234abcd"
                   autoComplete="off"
                 />
                 <Button onClick={handleRedeemCoupon} disabled={redeemLoading}>
-                  {redeemLoading ? 'Resgatando...' : 'Resgatar'}
+                  {redeemLoading ? 'Aplicando...' : 'Aplicar cupom'}
                 </Button>
               </div>
-            </div>
-            <div className="space-y-3 border-t border-border pt-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Usar cupom de indicação</h3>
-                <p className="text-xs text-muted-foreground">
-                  Use o cupom de outra pessoa. O bônus de 10 créditos para ambos só libera
-                  quando você comprar 10 ou mais créditos. Aplique antes da compra.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={referralInput}
-                  onChange={(event) => setReferralInput(event.target.value)}
-                  placeholder="Ex: mx1234abcd"
-                  autoComplete="off"
-                />
-                <Button onClick={handleApplyReferralCode} disabled={referralApplyLoading}>
-                  {referralApplyLoading ? 'Aplicando...' : 'Aplicar cupom'}
-                </Button>
-              </div>
-              {referralApplyMessage && (
-                <p className="text-xs text-muted-foreground">{referralApplyMessage}</p>
+              {redeemMessage && (
+                <p className="text-xs text-muted-foreground">{redeemMessage}</p>
               )}
             </div>
             {!hasPaidAccess && (
@@ -984,7 +969,7 @@ const Index = () => {
       </Dialog>
 
       <Dialog open={donationModalOpen} onOpenChange={setDonationModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Apoiar o projeto</DialogTitle>
             <DialogDescription>
@@ -1082,7 +1067,7 @@ const Index = () => {
       </Dialog>
 
       <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Seu cupom exclusivo</DialogTitle>
             <DialogDescription>
@@ -1121,7 +1106,7 @@ const Index = () => {
       </Dialog>
 
       <Dialog open={communityModalOpen} onOpenChange={setCommunityModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Comunidade Mentorix</DialogTitle>
             <DialogDescription>
