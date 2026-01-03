@@ -81,13 +81,14 @@ const Index = () => {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pixPollingRef = useRef<number | null>(null);
   const donationPollingRef = useRef<number | null>(null);
   const whatsappGroupUrl = import.meta.env.VITE_WHATSAPP_GROUP_URL || '';
   const developerName = 'Carlos Oliveira';
   const supportNumber = '41998157500';
+  const maxInputHeight = 160;
 
   const buildSupportLink = (message: string) => {
     const text = `Preciso de suporte no Mentorix. Erro: ${message}`;
@@ -101,6 +102,15 @@ const Index = () => {
 
   const clearSupportError = () => {
     setSupportError(null);
+  };
+
+  const resizeInput = () => {
+    if (!inputRef.current) return;
+    const el = inputRef.current;
+    el.style.height = 'auto';
+    const nextHeight = Math.min(el.scrollHeight, maxInputHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxInputHeight ? 'auto' : 'hidden';
   };
 
   const promptTemplates = [
@@ -290,8 +300,8 @@ const Index = () => {
         );
       }
       setCouponCode('');
-      setCreditsModalOpen(false);
-      toast.success('Cupom resgatado com sucesso.');
+      setRedeemMessage('Créditos adicionados ao seu saldo.');
+      toast.success('Cupom aplicado com sucesso.');
     } catch (error) {
       showSupportError('Erro ao resgatar cupom.');
     } finally {
@@ -322,6 +332,7 @@ const Index = () => {
   const handleOpenReferral = async () => {
     setMobileMenuOpen(false);
     setReferralModalOpen(true);
+    setRedeemMessage(null);
     if (referralCode) return;
     setReferralLoading(true);
     const { data, error } = await supabase.functions.invoke('referral-code');
@@ -428,6 +439,10 @@ const Index = () => {
       inputRef.current?.focus();
     }
   }, [creditsModalOpen, donationModalOpen, isTyping]);
+
+  useEffect(() => {
+    resizeInput();
+  }, [inputValue]);
 
   useEffect(() => {
     return () => {
@@ -634,6 +649,7 @@ const Index = () => {
     setIsTyping(true);
     inputRef.current?.focus();
     setActiveTemplateId(null);
+    resizeInput();
 
     const assistantId = generateId();
     const assistantMessage: ChatMessageType = {
@@ -698,6 +714,7 @@ const Index = () => {
     setInputValue('');
     setIsTyping(false);
     clearSupportError();
+    resizeInput();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -757,7 +774,7 @@ const Index = () => {
             )}
             <Button variant="ghost" size="sm" onClick={handleOpenReferral} className="gap-1.5">
               <Gift className="h-4 w-4" />
-              <span>Meu cupom</span>
+              <span>Cupons</span>
             </Button>
             <Button variant="ghost" size="sm" onClick={handleOpenDonation} className="gap-1.5">
               <Heart className="h-4 w-4" />
@@ -818,7 +835,7 @@ const Index = () => {
               className="w-full justify-start gap-2"
             >
               <Gift className="h-4 w-4" />
-              Meu cupom
+              Cupons
             </Button>
             <Button
               variant="ghost"
@@ -870,7 +887,7 @@ const Index = () => {
       </header>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 pt-20 pb-28 md:pt-4 md:pb-4 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto px-4 pt-20 pb-40 md:pt-4 md:pb-4 scrollbar-thin">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -923,44 +940,15 @@ const Index = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Credits Banner */}
-      {hasNoCredits && <CreditsBanner onOpenCredits={handleOpenCredits} />}
-
       <Dialog open={creditsModalOpen} onOpenChange={setCreditsModalOpen}>
         <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Créditos</DialogTitle>
             <DialogDescription>
-              Recarregue sua conta ou resgate um cupom.
+              Compre créditos para continuar usando o Mentorix. Use o menu Cupons para aplicar códigos.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Cupons</h3>
-                <p className="text-xs text-muted-foreground">
-                  Aceita cupom de créditos ou cupom de indicação. Se for indicação, o bônus
-                  libera após comprar 10+ créditos.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={couponCode}
-                  onChange={(event) => {
-                    setCouponCode(event.target.value);
-                    setRedeemMessage(null);
-                  }}
-                  placeholder="Ex: mentorix10 ou mx1234abcd"
-                  autoComplete="off"
-                />
-                <Button onClick={handleRedeemCoupon} disabled={redeemLoading}>
-                  {redeemLoading ? 'Aplicando...' : 'Aplicar cupom'}
-                </Button>
-              </div>
-              {redeemMessage && (
-                <p className="text-xs text-muted-foreground">{redeemMessage}</p>
-              )}
-            </div>
             {!hasPaidAccess && (
               <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
                 Compre qualquer quantidade de créditos para desbloquear a Comunidade WhatsApp.
@@ -1163,37 +1151,59 @@ const Index = () => {
       <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
         <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Seu cupom exclusivo</DialogTitle>
+            <DialogTitle>Cupons</DialogTitle>
             <DialogDescription>
-              Compartilhe com amigos. Quando alguém usar o cupom e comprar 10 ou mais créditos,
-              vocês dois ganham 10 créditos (o cupom deve ser aplicado antes da compra).
+              Aplique cupons e compartilhe o seu. No cupom de indicação, o bônus libera após
+              comprar 10+ créditos.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-              {referralLoading ? 'Gerando seu cupom...' : referralCode || 'Cupom indisponível.'}
+          <div className="space-y-6">
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Seu cupom</h3>
+                <p className="text-xs text-muted-foreground">
+                  Compartilhe com amigos. Se eles comprarem 10+ créditos, vocês ganham +10.
+                </p>
+              </div>
+              <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                {referralLoading ? 'Gerando seu cupom...' : referralCode || 'Cupom indisponível.'}
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleCopyReferral}
+                  disabled={!referralCode || referralLoading}
+                >
+                  Copiar cupom
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleCopyReferral}
-                disabled={!referralCode || referralLoading}
-              >
-                Copiar cupom
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setReferralModalOpen(false)}
-              >
-                Fechar
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p>1. A pessoa cria conta e aplica o cupom na área de créditos antes da compra.</p>
-              <p>2. Quando ela comprar 10+ créditos, ambos recebem +10 créditos.</p>
-              <p>3. Cada pessoa pode usar apenas 1 cupom de indicação.</p>
+
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Aplicar cupom</h3>
+                <p className="text-xs text-muted-foreground">
+                  Digite qualquer cupom. O bônus de indicação libera após comprar 10+ créditos.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={couponCode}
+                  onChange={(event) => {
+                    setCouponCode(event.target.value);
+                    setRedeemMessage(null);
+                  }}
+                  placeholder="Aplicar cupom"
+                  autoComplete="off"
+                />
+                <Button onClick={handleRedeemCoupon} disabled={redeemLoading}>
+                  {redeemLoading ? 'Aplicando...' : 'Aplicar'}
+                </Button>
+              </div>
+              {redeemMessage && (
+                <p className="text-xs text-muted-foreground">{redeemMessage}</p>
+              )}
             </div>
           </div>
         </DialogContent>
@@ -1227,46 +1237,51 @@ const Index = () => {
 
       {/* Input Area */}
       <div className="fixed bottom-0 inset-x-0 z-40 p-4 bg-card border-t border-border md:sticky md:bottom-0">
-        {supportError && (
-          <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <span>Ocorreu um erro. Precisa de ajuda?</span>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  asChild
-                  size="sm"
-                  variant="outline"
-                  className="h-7 border-destructive/40 text-destructive hover:text-destructive"
-                >
-                  <a href={buildSupportLink(supportError)} target="_blank" rel="noreferrer">
-                    Falar com suporte
-                  </a>
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7" onClick={clearSupportError}>
-                  Fechar
-                </Button>
+        <div className="max-w-4xl mx-auto space-y-3">
+          {hasNoCredits && <CreditsBanner onOpenCredits={handleOpenCredits} />}
+          {supportError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span>Ocorreu um erro. Precisa de ajuda?</span>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-destructive/40 text-destructive hover:text-destructive"
+                  >
+                    <a href={buildSupportLink(supportError)} target="_blank" rel="noreferrer">
+                      Falar com suporte
+                    </a>
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7" onClick={clearSupportError}>
+                    Fechar
+                  </Button>
+                </div>
               </div>
             </div>
+          )}
+          <div className="flex gap-2">
+            <textarea
+              value={inputValue}
+              ref={inputRef}
+              onChange={(event) => {
+                setInputValue(event.target.value);
+              }}
+              onKeyDown={handleKeyPress}
+              placeholder={hasNoCredits ? "Sem créditos disponíveis..." : "Digite sua pergunta..."}
+              disabled={hasNoCredits || isTyping || creditsLoading}
+              rows={1}
+              className="flex-1 px-4 py-3 bg-background border border-input rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all resize-none"
+            />
+            <Button
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || hasNoCredits || isTyping || creditsLoading}
+              className="px-4 py-3 h-auto rounded-xl"
+            >
+              <Send className="h-5 w-5" />
+            </Button>
           </div>
-        )}
-        <div className="flex gap-2 max-w-4xl mx-auto">
-          <input
-            type="text"
-            value={inputValue}
-            ref={inputRef}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyPress}
-            placeholder={hasNoCredits ? "Sem créditos disponíveis..." : "Digite sua pergunta..."}
-            disabled={hasNoCredits || isTyping || creditsLoading}
-            className="flex-1 px-4 py-3 bg-background border border-input rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          />
-          <Button
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || hasNoCredits || isTyping || creditsLoading}
-            className="px-4 py-3 h-auto rounded-xl"
-          >
-            <Send className="h-5 w-5" />
-          </Button>
         </div>
       </div>
     </div>
