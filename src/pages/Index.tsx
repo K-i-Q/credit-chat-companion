@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun, Users } from 'lucide-react';
+import { Heart, LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -45,6 +45,7 @@ const Index = () => {
   const [credits, setCreditsState] = useState(0);
   const [creditsLoading, setCreditsLoading] = useState(true);
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
+  const [donationModalOpen, setDonationModalOpen] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [pixCredits, setPixCredits] = useState('');
@@ -58,7 +59,6 @@ const Index = () => {
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
   const [paidAccessLoading, setPaidAccessLoading] = useState(false);
   const [communityModalOpen, setCommunityModalOpen] = useState(false);
-  const [creditsModalSection, setCreditsModalSection] = useState<'buy' | 'donate' | null>(null);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -66,8 +66,6 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pixPollingRef = useRef<number | null>(null);
   const donationPollingRef = useRef<number | null>(null);
-  const buySectionRef = useRef<HTMLDivElement>(null);
-  const donateSectionRef = useRef<HTMLDivElement>(null);
   const whatsappGroupUrl = import.meta.env.VITE_WHATSAPP_GROUP_URL || '';
   const developerName = 'Carlos Oliveira';
 
@@ -183,9 +181,12 @@ const Index = () => {
     }
   };
 
-  const handleOpenCredits = (section: 'buy' | 'donate' | null = 'buy') => {
-    setCreditsModalSection(section);
+  const handleOpenCredits = () => {
     setCreditsModalOpen(true);
+  };
+
+  const handleOpenDonation = () => {
+    setDonationModalOpen(true);
   };
 
   const handleOpenCommunity = () => {
@@ -275,17 +276,10 @@ const Index = () => {
   }, [messages]);
 
   useEffect(() => {
-    if (!creditsModalOpen && !isTyping) {
+    if (!creditsModalOpen && !donationModalOpen && !isTyping) {
       inputRef.current?.focus();
     }
-  }, [creditsModalOpen, isTyping]);
-
-  useEffect(() => {
-    if (!creditsModalOpen || !creditsModalSection) return;
-    const target =
-      creditsModalSection === 'buy' ? buySectionRef.current : donateSectionRef.current;
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [creditsModalOpen, creditsModalSection]);
+  }, [creditsModalOpen, donationModalOpen, isTyping]);
 
   useEffect(() => {
     return () => {
@@ -303,11 +297,14 @@ const Index = () => {
       window.clearInterval(pixPollingRef.current);
       pixPollingRef.current = null;
     }
-    if (!creditsModalOpen && donationPollingRef.current) {
+  }, [creditsModalOpen]);
+
+  useEffect(() => {
+    if (!donationModalOpen && donationPollingRef.current) {
       window.clearInterval(donationPollingRef.current);
       donationPollingRef.current = null;
     }
-  }, [creditsModalOpen]);
+  }, [donationModalOpen]);
 
   const startPixPolling = (paymentId: string) => {
     if (pixPollingRef.current) {
@@ -553,7 +550,7 @@ const Index = () => {
           )}
           <button
             type="button"
-            onClick={() => handleOpenCredits('buy')}
+            onClick={handleOpenCredits}
             className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
               hasNoCredits
                 ? 'bg-destructive/15 text-destructive'
@@ -576,6 +573,10 @@ const Index = () => {
               <span className="hidden sm:inline">Comunidade</span>
             </Button>
           )}
+          <Button variant="ghost" size="sm" onClick={handleOpenDonation} className="gap-1.5">
+            <Heart className="h-4 w-4" />
+            <span className="hidden sm:inline">Apoiar</span>
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -673,7 +674,7 @@ const Index = () => {
                 Compre qualquer quantidade de créditos para desbloquear a Comunidade WhatsApp.
               </div>
             )}
-            <div ref={buySectionRef} className="border-t border-border pt-4 space-y-3">
+            <div className="border-t border-border pt-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Comprar créditos</h3>
                 <p className="text-xs text-muted-foreground">
@@ -764,101 +765,103 @@ const Index = () => {
                 </div>
               </DialogFooter>
             </div>
-            <div ref={donateSectionRef} className="border-t border-border pt-4 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Apoiar o projeto</h3>
-                <p className="text-xs text-muted-foreground">
-                  Doação livre, sem créditos. Apoie o desenvolvimento do Mentorix.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Desenvolvedor: <span className="font-semibold text-foreground">{developerName}</span>
-                </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={donationModalOpen} onOpenChange={setDonationModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apoiar o projeto</DialogTitle>
+            <DialogDescription>
+              Doação livre, sem créditos. Apoie o desenvolvimento do Mentorix.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-xs text-muted-foreground">
+              Desenvolvedor:{' '}
+              <span className="font-semibold text-foreground">{developerName}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Valor da doação (R$)</label>
+                <Input
+                  type="number"
+                  min={1}
+                  step="0.01"
+                  value={donationAmount}
+                  onChange={(event) => setDonationAmount(event.target.value)}
+                  placeholder="Ex: 20"
+                />
               </div>
-              <DialogFooter className="sm:justify-start">
-                <div className="w-full space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Valor da doação (R$)</label>
-                      <Input
-                        type="number"
-                        min={1}
-                        step="0.01"
-                        value={donationAmount}
-                        onChange={(event) => setDonationAmount(event.target.value)}
-                        placeholder="Ex: 20"
-                      />
-                    </div>
-                    <Button onClick={handleCreateDonation} disabled={donationLoading}>
-                      {donationLoading ? 'Gerando...' : 'Gerar PIX para doação'}
-                    </Button>
+              <Button onClick={handleCreateDonation} disabled={donationLoading}>
+                {donationLoading ? 'Gerando...' : 'Gerar PIX para doação'}
+              </Button>
+            </div>
+            {donationPayment && (
+              <div className="rounded-lg border border-border p-3 space-y-3">
+                <div className="text-xs text-muted-foreground">
+                  Status:{' '}
+                  <span className="font-semibold text-foreground">
+                    {donationStatus === 'approved' ? 'Doação confirmada' : 'Aguardando pagamento'}
+                  </span>
+                </div>
+                {donationStatus === 'approved' ? (
+                  <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    Doação confirmada! Obrigado pelo apoio. Você pode fechar a janela.
                   </div>
-                  {donationPayment && (
-                    <div className="rounded-lg border border-border p-3 space-y-3">
+                ) : (
+                  <>
+                    {donationPayment.receiverName && (
                       <div className="text-xs text-muted-foreground">
-                        Status:{" "}
+                        Recebedor:{' '}
                         <span className="font-semibold text-foreground">
-                          {donationStatus === 'approved' ? 'Doação confirmada' : 'Aguardando pagamento'}
+                          {donationPayment.receiverName}
                         </span>
                       </div>
-                      {donationStatus === 'approved' ? (
-                        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                          Doação confirmada! Obrigado pelo apoio. Você pode fechar a janela.
-                        </div>
-                      ) : (
-                        <>
-                          {donationPayment.receiverName && (
-                            <div className="text-xs text-muted-foreground">
-                              Recebedor:{" "}
-                              <span className="font-semibold text-foreground">
-                                {donationPayment.receiverName}
-                              </span>
-                            </div>
-                          )}
-                          {donationPayment.receiverInstitution && (
-                            <div className="text-xs text-muted-foreground">
-                              Instituição:{" "}
-                              <span className="font-semibold text-foreground">
-                                {donationPayment.receiverInstitution}
-                              </span>
-                            </div>
-                          )}
-                          {donationPayment.qrCodeBase64 && (
-                            <div className="flex justify-center">
-                              <img
-                                src={`data:image/png;base64,${donationPayment.qrCodeBase64}`}
-                                alt="QR Code Pix"
-                                className="h-40 w-40"
-                              />
-                            </div>
-                          )}
-                          {donationPayment.qrCode && (
-                            <div className="space-y-2">
-                              <Input value={donationPayment.qrCode} readOnly />
-                              <Button type="button" variant="secondary" onClick={handleCopyDonation}>
-                                Copiar código PIX
-                              </Button>
-                            </div>
-                          )}
-                          {donationPayment.ticketUrl && (
-                            <a
-                              href={donationPayment.ticketUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-primary underline"
-                            >
-                              Abrir Pix em nova aba
-                            </a>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Para comprar créditos, use a opção acima. Doação não gera créditos.
-                  </p>
-                </div>
-              </DialogFooter>
-            </div>
+                    )}
+                    {donationPayment.receiverInstitution && (
+                      <div className="text-xs text-muted-foreground">
+                        Instituição:{' '}
+                        <span className="font-semibold text-foreground">
+                          {donationPayment.receiverInstitution}
+                        </span>
+                      </div>
+                    )}
+                    {donationPayment.qrCodeBase64 && (
+                      <div className="flex justify-center">
+                        <img
+                          src={`data:image/png;base64,${donationPayment.qrCodeBase64}`}
+                          alt="QR Code Pix"
+                          className="h-40 w-40"
+                        />
+                      </div>
+                    )}
+                    {donationPayment.qrCode && (
+                      <div className="space-y-2">
+                        <Input value={donationPayment.qrCode} readOnly />
+                        <Button type="button" variant="secondary" onClick={handleCopyDonation}>
+                          Copiar código PIX
+                        </Button>
+                      </div>
+                    )}
+                    {donationPayment.ticketUrl && (
+                      <a
+                        href={donationPayment.ticketUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary underline"
+                      >
+                        Abrir Pix em nova aba
+                      </a>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Para comprar créditos, use a opção de créditos no topo. Doação não gera créditos.
+            </p>
           </div>
         </DialogContent>
       </Dialog>
