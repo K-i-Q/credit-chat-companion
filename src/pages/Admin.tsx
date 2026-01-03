@@ -16,6 +16,7 @@ interface AdminUser {
   role: "admin" | "user";
   full_name: string | null;
   balance: number;
+  referral_code: string | null;
 }
 
 interface InviteLink {
@@ -355,6 +356,7 @@ const Admin = () => {
                             ? ` · Último login: ${new Date(item.last_sign_in_at).toLocaleDateString("pt-BR")}`
                             : ""}
                           {` · Créditos: ${item.balance}`}
+                          {` · Cupom: ${item.referral_code ?? "não gerado"}`}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

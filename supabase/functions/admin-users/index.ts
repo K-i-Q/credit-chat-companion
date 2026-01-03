@@ -34,9 +34,14 @@ Deno.serve(async (req) => {
     .from("credit_wallets")
     .select("user_id, balance")
     .in("user_id", userIds);
+  const { data: referralCodes } = await supabaseAdmin
+    .from("referral_codes")
+    .select("user_id, code")
+    .in("user_id", userIds);
 
   const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
   const walletMap = new Map((wallets || []).map((w) => [w.user_id, w]));
+  const referralMap = new Map((referralCodes || []).map((r) => [r.user_id, r]));
 
   const payload = users.map((user) => ({
     id: user.id,
@@ -46,6 +51,7 @@ Deno.serve(async (req) => {
     role: profileMap.get(user.id)?.role || "user",
     full_name: profileMap.get(user.id)?.full_name || null,
     balance: walletMap.get(user.id)?.balance ?? 0,
+    referral_code: referralMap.get(user.id)?.code ?? null,
   }));
 
   return jsonResponse({ users: payload }, 200);
