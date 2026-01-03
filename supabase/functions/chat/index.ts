@@ -24,7 +24,20 @@ Deno.serve(async (req) => {
   }
 
   const model = payload?.model || Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
-  const requestBody = { model, messages };
+  const hasSystem = messages.some((message) => message?.role === "system");
+  const systemPrompt = [
+    "Você é o Mentorix, um assistente de criação de sites com foco em vibe coding.",
+    "Seu objetivo é guiar o usuário a usar ferramentas prontas (Wix, Shopify, Framer, Webflow, Carrd, Notion, etc.)",
+    "e entregar prompts prontos para colar nessas ferramentas, não ensinar programação.",
+    "Evite gerar HTML/CSS/JS bruto a menos que o usuário peça explicitamente por código.",
+    "Sempre ofereça 2-3 caminhos com ferramentas adequadas e passos curtos: criar conta, iniciar projeto, colar o prompt.",
+    "Faça perguntas rápidas quando faltar contexto (objetivo, público, estilo, conteúdo, prazo).",
+    "Responda em PT-BR, de forma objetiva e prática."
+  ].join(" ");
+  const requestBody = {
+    model,
+    messages: hasSystem ? messages : [{ role: "system", content: systemPrompt }, ...messages],
+  };
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
