@@ -51,6 +51,7 @@ const Index = () => {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pixPollingRef = useRef<number | null>(null);
 
@@ -222,6 +223,12 @@ const Index = () => {
   }, [messages]);
 
   useEffect(() => {
+    if (!creditsModalOpen && !isTyping) {
+      inputRef.current?.focus();
+    }
+  }, [creditsModalOpen, isTyping]);
+
+  useEffect(() => {
     return () => {
       if (pixPollingRef.current) {
         window.clearInterval(pixPollingRef.current);
@@ -322,6 +329,7 @@ const Index = () => {
     setChatHistory(newMessages);
     setInputValue('');
     setIsTyping(true);
+    inputRef.current?.focus();
 
     const assistantId = generateId();
     const assistantMessage: ChatMessageType = {
@@ -375,6 +383,7 @@ const Index = () => {
       });
     } finally {
       setIsTyping(false);
+      inputRef.current?.focus();
     }
   };
 
@@ -610,6 +619,7 @@ const Index = () => {
           <input
             type="text"
             value={inputValue}
+            ref={inputRef}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder={hasNoCredits ? "Sem créditos disponíveis..." : "Digite sua pergunta..."}
