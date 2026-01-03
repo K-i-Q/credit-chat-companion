@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { Gift, Heart, LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun, Users } from 'lucide-react';
+import {
+  Gift,
+  Heart,
+  LogOut,
+  Menu,
+  Moon,
+  RotateCcw,
+  Send,
+  Settings,
+  Sparkles,
+  Sun,
+  Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -47,6 +59,7 @@ const Index = () => {
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
   const [donationModalOpen, setDonationModalOpen] = useState(false);
   const [referralModalOpen, setReferralModalOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [referralCode, setReferralCode] = useState('');
@@ -204,10 +217,12 @@ const Index = () => {
   };
 
   const handleOpenCredits = () => {
+    setMobileMenuOpen(false);
     setCreditsModalOpen(true);
   };
 
   const handleOpenDonation = () => {
+    setMobileMenuOpen(false);
     setDonationModalOpen(true);
   };
 
@@ -216,10 +231,12 @@ const Index = () => {
       toast.error('Compre créditos para desbloquear o acesso.');
       return;
     }
+    setMobileMenuOpen(false);
     setCommunityModalOpen(true);
   };
 
   const handleOpenReferral = async () => {
+    setMobileMenuOpen(false);
     setReferralModalOpen(true);
     setReferralApplyMessage(null);
     if (referralCode) return;
@@ -616,17 +633,14 @@ const Index = () => {
   const hasNoCredits = credits <= 0 && !creditsLoading;
 
   return (
-    <div className="flex flex-col min-h-[100dvh] bg-background">
+    <div className="flex flex-col h-[100dvh] bg-background overflow-hidden">
       {/* Header */}
-      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-card border-b border-border shadow-sm">
+      <header className="relative fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 py-3 bg-card border-b border-border shadow-sm md:sticky md:top-0">
         <div className="flex items-center gap-2">
           <Sparkles className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-bold text-foreground">Mentorix</h1>
         </div>
-        <div className="flex items-center gap-3">
-          {user?.email && (
-            <span className="hidden sm:inline text-sm text-muted-foreground">{user.email}</span>
-          )}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleOpenCredits}
@@ -638,55 +652,148 @@ const Index = () => {
           >
             Créditos: {creditsLoading ? '...' : credits}
           </button>
-          {role === 'admin' && (
-            <Button variant="ghost" size="sm" asChild className="gap-1.5">
-              <Link to="/admin">
-                <Settings className="h-4 w-4" />
-                <span className="hidden sm:inline">Admin</span>
-              </Link>
-            </Button>
-          )}
-          {hasPaidAccess && (
-            <Button variant="ghost" size="sm" onClick={handleOpenCommunity} className="gap-1.5">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Comunidade</span>
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={handleOpenReferral} className="gap-1.5">
-            <Gift className="h-4 w-4" />
-            <span className="hidden sm:inline">Meu cupom</span>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleOpenDonation} className="gap-1.5">
-            <Heart className="h-4 w-4" />
-            <span className="hidden sm:inline">Apoiar</span>
-          </Button>
           <Button
             variant="ghost"
-            size="sm"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="gap-1.5"
+            size="icon"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            className="md:hidden"
           >
-            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            <span className="hidden sm:inline">Tema</span>
+            <Menu className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
-            <RotateCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Reset</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={signOut}
-            className="gap-1.5"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Sair</span>
-          </Button>
+          <div className="hidden md:flex items-center gap-3">
+            {user?.email && (
+              <span className="text-sm text-muted-foreground">{user.email}</span>
+            )}
+            {role === 'admin' && (
+              <Button variant="ghost" size="sm" asChild className="gap-1.5">
+                <Link to="/admin">
+                  <Settings className="h-4 w-4" />
+                  <span>Admin</span>
+                </Link>
+              </Button>
+            )}
+            {hasPaidAccess && (
+              <Button variant="ghost" size="sm" onClick={handleOpenCommunity} className="gap-1.5">
+                <Users className="h-4 w-4" />
+                <span>Comunidade</span>
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={handleOpenReferral} className="gap-1.5">
+              <Gift className="h-4 w-4" />
+              <span>Meu cupom</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleOpenDonation} className="gap-1.5">
+              <Heart className="h-4 w-4" />
+              <span>Apoiar</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="gap-1.5"
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span>Tema</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
+              <RotateCcw className="h-4 w-4" />
+              <span>Reset</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5">
+              <LogOut className="h-4 w-4" />
+              <span>Sair</span>
+            </Button>
+          </div>
         </div>
+        {mobileMenuOpen && (
+          <div className="absolute right-4 top-full mt-2 w-56 rounded-xl border border-border bg-card shadow-lg p-2 md:hidden">
+            {user?.email && (
+              <div className="px-2 py-1 text-xs text-muted-foreground">{user.email}</div>
+            )}
+            {role === 'admin' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild
+                className="w-full justify-start gap-2"
+              >
+                <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
+                  <Settings className="h-4 w-4" />
+                  Admin
+                </Link>
+              </Button>
+            )}
+            {hasPaidAccess && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleOpenCommunity}
+                className="w-full justify-start gap-2"
+              >
+                <Users className="h-4 w-4" />
+                Comunidade
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenReferral}
+              className="w-full justify-start gap-2"
+            >
+              <Gift className="h-4 w-4" />
+              Meu cupom
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenDonation}
+              className="w-full justify-start gap-2"
+            >
+              <Heart className="h-4 w-4" />
+              Apoiar
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setTheme(theme === 'dark' ? 'light' : 'dark');
+                setMobileMenuOpen(false);
+              }}
+              className="w-full justify-start gap-2"
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              Tema
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                handleResetChat();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full justify-start gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                signOut();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full justify-start gap-2"
+            >
+              <LogOut className="h-4 w-4" />
+              Sair
+            </Button>
+          </div>
+        )}
       </header>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto px-4 pt-20 pb-28 md:pt-4 md:pb-4 scrollbar-thin">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -1040,7 +1147,7 @@ const Index = () => {
       </Dialog>
 
       {/* Input Area */}
-      <div className="sticky bottom-0 z-30 p-4 bg-card border-t border-border">
+      <div className="fixed bottom-0 inset-x-0 z-40 p-4 bg-card border-t border-border md:sticky md:bottom-0">
         {supportError && (
           <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
