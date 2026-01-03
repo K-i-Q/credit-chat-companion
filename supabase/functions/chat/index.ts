@@ -43,33 +43,91 @@ Deno.serve(async (req) => {
   const requestBody = {
     model,
     messages: hasSystem ? messages : [{ role: "system", content: systemPrompt }, ...messages],
+    stream: true,
   };
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+  const streamHeaders = {
+    ...corsHeaders,
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  };
 
-    const data = await response.json();
-    if (!response.ok) {
-      return jsonResponse(
-        { error: data?.error?.message || "OpenAI request failed" },
-        response.status
-      );
-    }
+  const encoder = new TextEncoder();
+  const sendEvent = (controller: ReadableStreamDefaultController, payload: Record<string, unknown>) => {
+    const data = `data: ${JSON.stringify(payload)}\n\n`;
+    controller.enqueue(encoder.encode(data));
+  };
 
-    const reply = data?.choices?.[0]?.message?.content?.trim();
-    if (!reply) {
-      return jsonResponse({ error: "Empty response from OpenAI" }, 502);
-    }
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        });
 
-    return jsonResponse({ reply, usage: data?.usage }, 200);
-  } catch (_error) {
-    return jsonResponse({ error: "Failed to reach OpenAI" }, 502);
-  }
+        if (!response.ok || !response.body) {
+          const errorBody = await response.json().catch(() => ({}));
+          sendEvent(controller, {
+            type: "error",
+            message: errorBody?.error?.message || "OpenAI request failed",
+          });
+          controller.close();
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+
+          for (const part of parts) {
+            const lines = part.split("\n");
+            const dataLines = lines
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.replace(/^data:\s?/, ""));
+            if (dataLines.length === 0) continue;
+            const data = dataLines.join("\n").trim();
+            if (!data) continue;
+            if (data === "[DONE]") {
+              sendEvent(controller, { type: "done" });
+              controller.close();
+              return;
+            }
+            let parsed: Record<string, unknown> | null = null;
+            try {
+              parsed = JSON.parse(data) as Record<string, unknown>;
+            } catch (_error) {
+              continue;
+            }
+            const delta = (parsed?.choices as Array<Record<string, unknown>> | undefined)?.[0]
+              ?.delta as { content?: string } | undefined;
+            if (delta?.content) {
+              sendEvent(controller, { type: "delta", content: delta.content });
+            }
+          }
+        }
+
+        sendEvent(controller, { type: "done" });
+        controller.close();
+      } catch (_error) {
+        sendEvent(controller, { type: "error", message: "Failed to reach OpenAI" });
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, { headers: streamHeaders });
 });

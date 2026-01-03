@@ -52,21 +52,67 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pixPollingRef = useRef<number | null>(null);
 
-  const requestAssistantReply = async (currentMessages: ChatMessageType[]) => {
-    const { data, error } = await supabase.functions.invoke('chat', {
-      body: {
-        messages: currentMessages.map(({ role, content }) => ({ role, content })),
+  const streamAssistantReply = async (
+    currentMessages: ChatMessageType[],
+    onDelta: (chunk: string) => void
+  ) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      throw new Error('Sua sessão expirou. Faça login novamente.');
+    }
+
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
       },
+      body: JSON.stringify({
+        messages: currentMessages.map(({ role, content }) => ({ role, content })),
+      }),
     });
 
-    if (error) {
-      const message = await getFunctionsErrorMessage(error, 'Erro ao buscar resposta.');
-      throw new Error(message);
+    if (!response.ok || !response.body) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody?.error || 'Erro ao buscar resposta.');
     }
-    if (!data?.reply) {
-      throw new Error('Resposta vazia');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const rawEvent of events) {
+        const lines = rawEvent.split('\n');
+        const dataLines = lines
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.replace(/^data:\s?/, ''));
+        if (dataLines.length === 0) continue;
+        const data = dataLines.join('\n').trim();
+        if (!data) continue;
+        try {
+          const payload = JSON.parse(data) as { type?: string; content?: string; message?: string };
+          if (payload.type === 'delta' && payload.content) {
+            onDelta(payload.content);
+          }
+          if (payload.type === 'error') {
+            throw new Error(payload.message || 'Erro ao buscar resposta.');
+          }
+        } catch (_error) {
+          // ignore parse errors
+        }
+      }
     }
-    return data.reply as string;
   };
 
   const handleRedeemCoupon = async () => {
@@ -275,19 +321,28 @@ const Index = () => {
     setInputValue('');
     setIsTyping(true);
 
+    const assistantId = generateId();
+    const assistantMessage: ChatMessageType = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    };
+
+    const seededMessages = [...newMessages, assistantMessage];
+    setMessages(seededMessages);
+    setChatHistory(seededMessages);
+
     try {
-      const reply = await requestAssistantReply(newMessages);
-
-      const assistantMessage: ChatMessageType = {
-        id: generateId(),
-        role: 'assistant',
-        content: reply,
-        timestamp: Date.now(),
-      };
-
-      const updatedMessages = [...newMessages, assistantMessage];
-      setMessages(updatedMessages);
-      setChatHistory(updatedMessages);
+      await streamAssistantReply(newMessages, (chunk) => {
+        setMessages((prev) => {
+          const updated = prev.map((msg) =>
+            msg.id === assistantId ? { ...msg, content: msg.content + chunk } : msg
+          );
+          setChatHistory(updated);
+          return updated;
+        });
+      });
 
       if (user) {
         const { data, error } = await supabase.rpc('debit_credits', {
@@ -307,15 +362,15 @@ const Index = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('Chat request failed', error);
-      const assistantMessage: ChatMessageType = {
-        id: generateId(),
-        role: 'assistant',
-        content: `Não foi possível obter resposta agora. ${errorMessage}`,
-        timestamp: Date.now(),
-      };
-      const updatedMessages = [...newMessages, assistantMessage];
-      setMessages(updatedMessages);
-      setChatHistory(updatedMessages);
+      setMessages((prev) => {
+        const updated = prev.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: `Não foi possível obter resposta agora. ${errorMessage}` }
+            : msg
+        );
+        setChatHistory(updated);
+        return updated;
+      });
     } finally {
       setIsTyping(false);
     }
