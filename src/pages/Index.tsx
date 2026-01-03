@@ -31,6 +31,7 @@ type PixPayment = {
   qrCode?: string | null;
   qrCodeBase64?: string | null;
   ticketUrl?: string | null;
+  receiverName?: string | null;
 };
 
 const Index = () => {
@@ -243,6 +244,7 @@ const Index = () => {
       qrCode: data.qr_code,
       qrCodeBase64: data.qr_code_base64,
       ticketUrl: data.ticket_url,
+      receiverName: data.receiver_name,
     });
     startPixPolling(data.payment_id);
   };
@@ -484,32 +486,48 @@ const Index = () => {
                           {pixStatus === 'approved' ? 'Pago' : 'Aguardando pagamento'}
                         </span>
                       </div>
-                      {pixPayment.qrCodeBase64 && (
-                        <div className="flex justify-center">
-                          <img
-                            src={`data:image/png;base64,${pixPayment.qrCodeBase64}`}
-                            alt="QR Code Pix"
-                            className="h-40 w-40"
-                          />
+                      {pixStatus === 'approved' ? (
+                        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                          Pagamento confirmado! Você já recebeu os créditos. Pode fechar a janela.
                         </div>
-                      )}
-                      {pixPayment.qrCode && (
-                        <div className="space-y-2">
-                          <Input value={pixPayment.qrCode} readOnly />
-                          <Button type="button" variant="secondary" onClick={handleCopyPix}>
-                            Copiar código PIX
-                          </Button>
-                        </div>
-                      )}
-                      {pixPayment.ticketUrl && (
-                        <a
-                          href={pixPayment.ticketUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-primary underline"
-                        >
-                          Abrir Pix em nova aba
-                        </a>
+                      ) : (
+                        <>
+                          {pixPayment.receiverName && (
+                            <div className="text-xs text-muted-foreground">
+                              Recebedor:{" "}
+                              <span className="font-semibold text-foreground">
+                                {pixPayment.receiverName}
+                              </span>
+                            </div>
+                          )}
+                          {pixPayment.qrCodeBase64 && (
+                            <div className="flex justify-center">
+                              <img
+                                src={`data:image/png;base64,${pixPayment.qrCodeBase64}`}
+                                alt="QR Code Pix"
+                                className="h-40 w-40"
+                              />
+                            </div>
+                          )}
+                          {pixPayment.qrCode && (
+                            <div className="space-y-2">
+                              <Input value={pixPayment.qrCode} readOnly />
+                              <Button type="button" variant="secondary" onClick={handleCopyPix}>
+                                Copiar código PIX
+                              </Button>
+                            </div>
+                          )}
+                          {pixPayment.ticketUrl && (
+                            <a
+                              href={pixPayment.ticketUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary underline"
+                            >
+                              Abrir Pix em nova aba
+                            </a>
+                          )}
+                        </>
                       )}
                     </div>
                   )}

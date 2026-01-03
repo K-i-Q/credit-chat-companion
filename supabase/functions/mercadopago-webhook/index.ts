@@ -74,6 +74,22 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Payment amount mismatch" }, 400);
     }
 
+    const { data: lockRow, error: lockError } = await supabaseAdmin
+      .from("credit_purchases")
+      .update({ status: "processing", updated_at: now })
+      .eq("id", purchase.id)
+      .eq("status", purchase.status)
+      .select("id")
+      .maybeSingle();
+
+    if (lockError) {
+      return jsonResponse({ error: lockError.message }, 500);
+    }
+
+    if (!lockRow) {
+      return jsonResponse({ ok: true }, 200);
+    }
+
     const { data: topupData, error: topupError } = await supabaseAdmin.rpc(
       "admin_topup_credits",
       {
@@ -84,6 +100,17 @@ Deno.serve(async (req) => {
     );
 
     if (topupError) {
+      await supabaseAdmin
+        .from("credit_purchases")
+        .update({
+          status: "failed",
+          provider_payment_id: providerPaymentId,
+          updated_at: now,
+          metadata: {
+            mp_status_detail: statusDetail,
+          },
+        })
+        .eq("id", purchase.id);
       return jsonResponse({ error: topupError.message }, 500);
     }
 

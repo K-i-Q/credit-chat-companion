@@ -26,6 +26,25 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "MERCADOPAGO_ACCESS_TOKEN is not set" }, 500);
   }
 
+  let receiverName: string | null = null;
+  try {
+    const receiverResponse = await fetch("https://api.mercadopago.com/users/me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    const receiverData = await receiverResponse.json().catch(() => null);
+    if (receiverResponse.ok && receiverData) {
+      receiverName =
+        receiverData.nickname ||
+        [receiverData.first_name, receiverData.last_name].filter(Boolean).join(" ") ||
+        receiverData.email ||
+        null;
+    }
+  } catch (_error) {
+    receiverName = null;
+  }
+
   const paymentId = crypto.randomUUID();
   const amount = credits * 1;
   const amountCents = credits * 100;
@@ -86,6 +105,7 @@ Deno.serve(async (req) => {
       qr_code_base64: qrCodeBase64,
       metadata: {
         mp_status_detail: data?.status_detail ?? null,
+        receiver_name: receiverName,
       },
     });
 
@@ -100,6 +120,7 @@ Deno.serve(async (req) => {
       qr_code: qrCode,
       qr_code_base64: qrCodeBase64,
       ticket_url: ticketUrl,
+      receiver_name: receiverName,
     },
     200
   );
