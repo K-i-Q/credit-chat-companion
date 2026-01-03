@@ -941,7 +941,10 @@ const Index = () => {
       </div>
 
       <Dialog open={creditsModalOpen} onOpenChange={setCreditsModalOpen}>
-        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-md max-h-[85dvh] overflow-y-auto"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Créditos</DialogTitle>
             <DialogDescription>
@@ -1149,7 +1152,10 @@ const Index = () => {
       </Dialog>
 
       <Dialog open={referralModalOpen} onOpenChange={setReferralModalOpen}>
-        <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-md max-h-[85dvh] overflow-y-auto"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Cupons</DialogTitle>
             <DialogDescription>
