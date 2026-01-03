@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LogOut, Send, Settings, Sparkles } from 'lucide-react';
+import { LogOut, RotateCcw, Send, Settings, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -221,6 +221,13 @@ const Index = () => {
     }
   };
 
+  const handleResetChat = () => {
+    setMessages([]);
+    setChatHistory([]);
+    setInputValue('');
+    setIsTyping(false);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -261,6 +268,10 @@ const Index = () => {
           >
             Créditos: {creditsLoading ? '...' : credits}
           </button>
+          <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
+            <RotateCcw className="h-4 w-4" />
+            <span className="hidden sm:inline">Reset</span>
+          </Button>
           <Button
             variant="ghost"
             size="sm"
