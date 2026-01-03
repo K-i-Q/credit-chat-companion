@@ -35,6 +35,8 @@ type PixPayment = {
   receiverName?: string | null;
 };
 
+type DonationPayment = PixPayment;
+
 const Index = () => {
   const { user, signOut } = useAuth();
   const { role } = useProfileRole();
@@ -48,12 +50,21 @@ const Index = () => {
   const [pixLoading, setPixLoading] = useState(false);
   const [pixPayment, setPixPayment] = useState<PixPayment | null>(null);
   const [pixStatus, setPixStatus] = useState<string>('pending');
+  const [donationAmount, setDonationAmount] = useState('');
+  const [donationLoading, setDonationLoading] = useState(false);
+  const [donationPayment, setDonationPayment] = useState<DonationPayment | null>(null);
+  const [donationStatus, setDonationStatus] = useState<string>('pending');
+  const [hasPaidAccess, setHasPaidAccess] = useState(false);
+  const [paidAccessLoading, setPaidAccessLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pixPollingRef = useRef<number | null>(null);
+  const donationPollingRef = useRef<number | null>(null);
+  const whatsappGroupUrl = import.meta.env.VITE_WHATSAPP_GROUP_URL || '';
+  const developerName = 'Carlos Oliveira';
 
   const streamAssistantReply = async (
     currentMessages: ChatMessageType[],
@@ -204,6 +215,33 @@ const Index = () => {
     }
   }, [user]);
 
+  const loadPaidAccess = async () => {
+    if (!user) return;
+    setPaidAccessLoading(true);
+    const { data, error } = await supabase
+      .from('credit_purchases')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .limit(1);
+    if (!error) {
+      setHasPaidAccess(Boolean(data?.length));
+    }
+    setPaidAccessLoading(false);
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadPaidAccess();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (creditsModalOpen && user) {
+      loadPaidAccess();
+    }
+  }, [creditsModalOpen, user]);
+
   useEffect(() => {
     const handler = (event: Event) => {
       const customEvent = event as CustomEvent<number>;
@@ -233,6 +271,9 @@ const Index = () => {
       if (pixPollingRef.current) {
         window.clearInterval(pixPollingRef.current);
       }
+      if (donationPollingRef.current) {
+        window.clearInterval(donationPollingRef.current);
+      }
     };
   }, []);
 
@@ -240,6 +281,10 @@ const Index = () => {
     if (!creditsModalOpen && pixPollingRef.current) {
       window.clearInterval(pixPollingRef.current);
       pixPollingRef.current = null;
+    }
+    if (!creditsModalOpen && donationPollingRef.current) {
+      window.clearInterval(donationPollingRef.current);
+      donationPollingRef.current = null;
     }
   }, [creditsModalOpen]);
 
@@ -266,7 +311,30 @@ const Index = () => {
             new CustomEvent('mentorix-credits-updated', { detail: data.balance })
           );
         }
+        setHasPaidAccess(true);
         toast.success('Pagamento confirmado. Créditos adicionados!');
+      }
+    }, 5000);
+  };
+
+  const startDonationPolling = (paymentId: string) => {
+    if (donationPollingRef.current) {
+      window.clearInterval(donationPollingRef.current);
+    }
+    donationPollingRef.current = window.setInterval(async () => {
+      const { data, error } = await supabase.functions.invoke('donation-status', {
+        body: { payment_id: paymentId },
+      });
+      if (error) {
+        return;
+      }
+      if (data?.status) {
+        setDonationStatus(data.status);
+      }
+      if (data?.status === 'approved') {
+        window.clearInterval(donationPollingRef.current ?? undefined);
+        donationPollingRef.current = null;
+        toast.success('Doação confirmada! Obrigado pelo apoio.');
       }
     }, 5000);
   };
@@ -304,10 +372,54 @@ const Index = () => {
     startPixPolling(data.payment_id);
   };
 
+  const handleCreateDonation = async () => {
+    const normalized = donationAmount.replace(',', '.');
+    const amount = Number(normalized);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Informe um valor válido para doação.');
+      return;
+    }
+    setDonationLoading(true);
+    setDonationPayment(null);
+    const { data, error } = await supabase.functions.invoke('donation-create', {
+      body: { amount },
+    });
+    setDonationLoading(false);
+    if (error) {
+      const message = await getFunctionsErrorMessage(error, 'Erro ao gerar PIX.');
+      toast.error(message);
+      return;
+    }
+    if (!data?.payment_id) {
+      toast.error('Não foi possível gerar o PIX.');
+      return;
+    }
+    setDonationStatus(data.status || 'pending');
+    setDonationPayment({
+      id: data.payment_id,
+      status: data.status || 'pending',
+      qrCode: data.qr_code,
+      qrCodeBase64: data.qr_code_base64,
+      ticketUrl: data.ticket_url,
+      receiverName: data.receiver_name,
+    });
+    startDonationPolling(data.payment_id);
+  };
+
   const handleCopyPix = async () => {
     if (!pixPayment?.qrCode) return;
     try {
       await navigator.clipboard.writeText(pixPayment.qrCode);
+      toast.success('Código PIX copiado.');
+    } catch (_error) {
+      toast.error('Não foi possível copiar.');
+    }
+  };
+
+  const handleCopyDonation = async () => {
+    if (!donationPayment?.qrCode) return;
+    try {
+      await navigator.clipboard.writeText(donationPayment.qrCode);
       toast.success('Código PIX copiado.');
     } catch (_error) {
       toast.error('Não foi possível copiar.');
@@ -530,7 +642,7 @@ const Index = () => {
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Comprar créditos</h3>
                 <p className="text-xs text-muted-foreground">
-                  Em breve você poderá comprar créditos direto no app.
+                  Cada crédito custa R$ 1,00. O acesso ao WhatsApp é liberado só após compra.
                 </p>
               </div>
               <DialogFooter className="sm:justify-start">
@@ -608,6 +720,118 @@ const Index = () => {
                   )}
                 </div>
               </DialogFooter>
+            </div>
+            <div className="border-t border-border pt-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Apoiar o projeto</h3>
+                <p className="text-xs text-muted-foreground">
+                  Doação livre, sem créditos. Apoie o desenvolvimento do Mentorix.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Desenvolvedor: <span className="font-semibold text-foreground">{developerName}</span>
+                </p>
+              </div>
+              <DialogFooter className="sm:justify-start">
+                <div className="w-full space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Valor da doação (R$)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        step="0.01"
+                        value={donationAmount}
+                        onChange={(event) => setDonationAmount(event.target.value)}
+                        placeholder="Ex: 20"
+                      />
+                    </div>
+                    <Button onClick={handleCreateDonation} disabled={donationLoading}>
+                      {donationLoading ? 'Gerando...' : 'Gerar PIX para doação'}
+                    </Button>
+                  </div>
+                  {donationPayment && (
+                    <div className="rounded-lg border border-border p-3 space-y-3">
+                      <div className="text-xs text-muted-foreground">
+                        Status:{" "}
+                        <span className="font-semibold text-foreground">
+                          {donationStatus === 'approved' ? 'Doação confirmada' : 'Aguardando pagamento'}
+                        </span>
+                      </div>
+                      {donationStatus === 'approved' ? (
+                        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                          Doação confirmada! Obrigado pelo apoio. Você pode fechar a janela.
+                        </div>
+                      ) : (
+                        <>
+                          {donationPayment.receiverName && (
+                            <div className="text-xs text-muted-foreground">
+                              Recebedor:{" "}
+                              <span className="font-semibold text-foreground">
+                                {donationPayment.receiverName}
+                              </span>
+                            </div>
+                          )}
+                          {donationPayment.qrCodeBase64 && (
+                            <div className="flex justify-center">
+                              <img
+                                src={`data:image/png;base64,${donationPayment.qrCodeBase64}`}
+                                alt="QR Code Pix"
+                                className="h-40 w-40"
+                              />
+                            </div>
+                          )}
+                          {donationPayment.qrCode && (
+                            <div className="space-y-2">
+                              <Input value={donationPayment.qrCode} readOnly />
+                              <Button type="button" variant="secondary" onClick={handleCopyDonation}>
+                                Copiar código PIX
+                              </Button>
+                            </div>
+                          )}
+                          {donationPayment.ticketUrl && (
+                            <a
+                              href={donationPayment.ticketUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary underline"
+                            >
+                              Abrir Pix em nova aba
+                            </a>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Para comprar créditos, use a opção acima. Doação não gera créditos.
+                  </p>
+                </div>
+              </DialogFooter>
+            </div>
+            <div className="border-t border-border pt-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Comunidade WhatsApp</h3>
+                <p className="text-xs text-muted-foreground">
+                  Disponível apenas para quem já comprou créditos.
+                </p>
+              </div>
+              {paidAccessLoading ? (
+                <p className="text-xs text-muted-foreground">Verificando acesso...</p>
+              ) : hasPaidAccess ? (
+                whatsappGroupUrl ? (
+                  <Button asChild variant="secondary">
+                    <a href={whatsappGroupUrl} target="_blank" rel="noreferrer">
+                      Entrar no grupo
+                    </a>
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Link do grupo não configurado.</p>
+                )
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Compre créditos para desbloquear o acesso.
+                </p>
+              )}
             </div>
           </div>
         </DialogContent>

@@ -42,6 +42,8 @@ supabase functions deploy invite-redeem
 supabase functions deploy pix-create
 supabase functions deploy pix-status
 supabase functions deploy mercadopago-webhook
+supabase functions deploy donation-create
+supabase functions deploy donation-status
 ```
 
 ## Useful scripts

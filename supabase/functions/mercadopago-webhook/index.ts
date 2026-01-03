@@ -52,21 +52,116 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: error.message }, 500);
   }
 
-  if (!purchase) {
-    return jsonResponse({ ok: true }, 200);
-  }
-
   const status = mpData?.status || "pending";
   const statusDetail = mpData?.status_detail ?? null;
   const providerPaymentId = mpData?.id?.toString() ?? null;
   const now = new Date().toISOString();
 
-  if (purchase.status === "approved") {
+  if (purchase) {
+    if (purchase.status === "approved") {
+      return jsonResponse({ ok: true }, 200);
+    }
+
+    if (status === "approved") {
+      const expectedAmount = purchase.amount_cents / 100;
+      const amount = Number(mpData?.transaction_amount ?? 0);
+      const currency = mpData?.currency_id || "BRL";
+
+      if (currency !== "BRL" || Math.abs(amount - expectedAmount) > 0.01) {
+        return jsonResponse({ error: "Payment amount mismatch" }, 400);
+      }
+
+      const { data: lockRow, error: lockError } = await supabaseAdmin
+        .from("credit_purchases")
+        .update({ status: "processing", updated_at: now })
+        .eq("id", purchase.id)
+        .eq("status", purchase.status)
+        .select("id")
+        .maybeSingle();
+
+      if (lockError) {
+        return jsonResponse({ error: lockError.message }, 500);
+      }
+
+      if (!lockRow) {
+        return jsonResponse({ ok: true }, 200);
+      }
+
+      const { data: topupData, error: topupError } = await supabaseAdmin.rpc(
+        "admin_topup_credits",
+        {
+          p_user_id: purchase.user_id,
+          p_amount: purchase.credits,
+          p_meta: { source: "pix", provider: "mercadopago", payment_id: providerPaymentId },
+        }
+      );
+
+      if (topupError) {
+        await supabaseAdmin
+          .from("credit_purchases")
+          .update({
+            status: "failed",
+            provider_payment_id: providerPaymentId,
+            updated_at: now,
+            metadata: {
+              mp_status_detail: statusDetail,
+            },
+          })
+          .eq("id", purchase.id);
+        return jsonResponse({ error: topupError.message }, 500);
+      }
+
+      await supabaseAdmin
+        .from("credit_purchases")
+        .update({
+          status,
+          provider_payment_id: providerPaymentId,
+          updated_at: now,
+          approved_at: now,
+          metadata: {
+            mp_status_detail: statusDetail,
+          },
+        })
+        .eq("id", purchase.id);
+
+      return jsonResponse({ ok: true, new_balance: topupData?.new_balance ?? null }, 200);
+    }
+
+    await supabaseAdmin
+      .from("credit_purchases")
+      .update({
+        status,
+        provider_payment_id: providerPaymentId,
+        updated_at: now,
+        metadata: {
+          mp_status_detail: statusDetail,
+        },
+      })
+      .eq("id", purchase.id);
+
+    return jsonResponse({ ok: true }, 200);
+  }
+
+  const { data: donation, error: donationError } = await supabaseAdmin
+    .from("donation_purchases")
+    .select("id, user_id, amount_cents, status")
+    .eq("id", externalReference)
+    .maybeSingle();
+
+  if (donationError) {
+    return jsonResponse({ error: donationError.message }, 500);
+  }
+
+  if (!donation) {
+    return jsonResponse({ ok: true }, 200);
+  }
+
+  if (donation.status === "approved") {
     return jsonResponse({ ok: true }, 200);
   }
 
   if (status === "approved") {
-    const expectedAmount = purchase.amount_cents / 100;
+    const expectedAmount = donation.amount_cents / 100;
     const amount = Number(mpData?.transaction_amount ?? 0);
     const currency = mpData?.currency_id || "BRL";
 
@@ -75,10 +170,10 @@ Deno.serve(async (req) => {
     }
 
     const { data: lockRow, error: lockError } = await supabaseAdmin
-      .from("credit_purchases")
+      .from("donation_purchases")
       .update({ status: "processing", updated_at: now })
-      .eq("id", purchase.id)
-      .eq("status", purchase.status)
+      .eq("id", donation.id)
+      .eq("status", donation.status)
       .select("id")
       .maybeSingle();
 
@@ -90,32 +185,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: true }, 200);
     }
 
-    const { data: topupData, error: topupError } = await supabaseAdmin.rpc(
-      "admin_topup_credits",
-      {
-        p_user_id: purchase.user_id,
-        p_amount: purchase.credits,
-        p_meta: { source: "pix", provider: "mercadopago", payment_id: providerPaymentId },
-      }
-    );
-
-    if (topupError) {
-      await supabaseAdmin
-        .from("credit_purchases")
-        .update({
-          status: "failed",
-          provider_payment_id: providerPaymentId,
-          updated_at: now,
-          metadata: {
-            mp_status_detail: statusDetail,
-          },
-        })
-        .eq("id", purchase.id);
-      return jsonResponse({ error: topupError.message }, 500);
-    }
-
     await supabaseAdmin
-      .from("credit_purchases")
+      .from("donation_purchases")
       .update({
         status,
         provider_payment_id: providerPaymentId,
@@ -125,13 +196,13 @@ Deno.serve(async (req) => {
           mp_status_detail: statusDetail,
         },
       })
-      .eq("id", purchase.id);
+      .eq("id", donation.id);
 
-    return jsonResponse({ ok: true, new_balance: topupData?.new_balance ?? null }, 200);
+    return jsonResponse({ ok: true }, 200);
   }
 
   await supabaseAdmin
-    .from("credit_purchases")
+    .from("donation_purchases")
     .update({
       status,
       provider_payment_id: providerPaymentId,
@@ -140,7 +211,7 @@ Deno.serve(async (req) => {
         mp_status_detail: statusDetail,
       },
     })
-    .eq("id", purchase.id);
+    .eq("id", donation.id);
 
   return jsonResponse({ ok: true }, 200);
 });
