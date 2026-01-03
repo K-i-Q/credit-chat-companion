@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LogOut, RotateCcw, Send, Settings, Sparkles } from 'lucide-react';
+import { LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -24,6 +24,7 @@ import {
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { getFunctionsErrorMessage } from '@/lib/functions';
+import { useTheme } from 'next-themes';
 
 type PixPayment = {
   id: string;
@@ -37,6 +38,7 @@ type PixPayment = {
 const Index = () => {
   const { user, signOut } = useAuth();
   const { role } = useProfileRole();
+  const { theme, setTheme } = useTheme();
   const [credits, setCreditsState] = useState(0);
   const [creditsLoading, setCreditsLoading] = useState(true);
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
@@ -412,6 +414,15 @@ const Index = () => {
               </Link>
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="gap-1.5"
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <span className="hidden sm:inline">Tema</span>
+          </Button>
           <button
             type="button"
             onClick={handleOpenCredits}
