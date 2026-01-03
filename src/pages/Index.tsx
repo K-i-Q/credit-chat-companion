@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LogOut, Menu, Moon, RotateCcw, Send, Settings, Sparkles, Sun } from 'lucide-react';
+import { LogOut, Moon, RotateCcw, Send, Settings, Sparkles, Sun, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,14 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { ChatMessage } from '@/components/ChatMessage';
 import { CreditsBanner } from '@/components/CreditsBanner';
 import { useAuth } from '@/hooks/useAuth';
@@ -191,7 +183,7 @@ const Index = () => {
     }
   };
 
-  const handleOpenCredits = (section: 'buy' | 'donate' | null = null) => {
+  const handleOpenCredits = (section: 'buy' | 'donate' | null = 'buy') => {
     setCreditsModalSection(section);
     setCreditsModalOpen(true);
   };
@@ -559,97 +551,53 @@ const Index = () => {
           {user?.email && (
             <span className="hidden sm:inline text-sm text-muted-foreground">{user.email}</span>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-                  hasNoCredits
-                    ? 'bg-destructive/15 text-destructive'
-                    : 'bg-credits text-credits-foreground'
-                }`}
-              >
-                Créditos: {creditsLoading ? '...' : credits}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Créditos</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => handleOpenCredits('buy')}>
-                Comprar créditos
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleOpenCredits('donate')}>
-                Apoiar o projeto
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={handleOpenCommunity} disabled={!hasPaidAccess}>
-                Comunidade WhatsApp
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className="hidden sm:flex items-center gap-3">
-            {role === 'admin' && (
-              <Button variant="ghost" size="sm" asChild className="gap-1.5">
-                <Link to="/admin">
-                  <Settings className="h-4 w-4" />
-                  <span className="hidden sm:inline">Admin</span>
-                </Link>
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="gap-1.5"
-            >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="hidden sm:inline">Tema</span>
+          <button
+            type="button"
+            onClick={() => handleOpenCredits('buy')}
+            className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+              hasNoCredits
+                ? 'bg-destructive/15 text-destructive'
+                : 'bg-credits text-credits-foreground'
+            }`}
+          >
+            Créditos: {creditsLoading ? '...' : credits}
+          </button>
+          {role === 'admin' && (
+            <Button variant="ghost" size="sm" asChild className="gap-1.5">
+              <Link to="/admin">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Admin</span>
+              </Link>
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
-              <RotateCcw className="h-4 w-4" />
-              <span className="hidden sm:inline">Reset</span>
+          )}
+          {hasPaidAccess && (
+            <Button variant="ghost" size="sm" onClick={handleOpenCommunity} className="gap-1.5">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Comunidade</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={signOut}
-              className="gap-1.5"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="sm:hidden">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Menu</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => handleOpenCredits('buy')}>
-                Comprar créditos
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleOpenCredits('donate')}>
-                Apoiar o projeto
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleOpenCommunity} disabled={!hasPaidAccess}>
-                Comunidade WhatsApp
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {role === 'admin' && (
-                <DropdownMenuItem asChild>
-                  <Link to="/admin">Admin</Link>
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              >
-                Tema {theme === 'dark' ? 'claro' : 'escuro'}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleResetChat}>Reset</DropdownMenuItem>
-              <DropdownMenuItem onSelect={signOut}>Sair</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="gap-1.5"
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <span className="hidden sm:inline">Tema</span>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleResetChat} className="gap-1.5">
+            <RotateCcw className="h-4 w-4" />
+            <span className="hidden sm:inline">Reset</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={signOut}
+            className="gap-1.5"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sair</span>
+          </Button>
         </div>
       </header>
 
@@ -720,6 +668,11 @@ const Index = () => {
                 </Button>
               </div>
             </div>
+            {!hasPaidAccess && (
+              <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
+                Compre qualquer quantidade de créditos para desbloquear a Comunidade WhatsApp.
+              </div>
+            )}
             <div ref={buySectionRef} className="border-t border-border pt-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Comprar créditos</h3>
